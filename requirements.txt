@@ -1,0 +1,25 @@
+# Core
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+pydantic==2.7.1
+pydantic-settings==2.2.1
+
+# Database
+sqlalchemy==2.0.30
+asyncpg==0.29.0
+alembic==1.13.1
+
+# Utilities
+python-dotenv==1.0.1
+
+# HTTP client (SimpleFIN bridge calls)
+httpx==0.27.0
+
+# Encryption (access URL at rest)
+cryptography==42.0.7
+
+# Authentication
+passlib[bcrypt]==1.7.4
+bcrypt==3.2.2          # passlib 1.7.4 is incompatible with bcrypt>=4.0.0
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.9
