@@ -1,0 +1,47 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: finora-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-finora}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-finora_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finora} -d ${POSTGRES_DB:-finora_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  server:
+    image: jconvey/finora-server:latest
+    container_name: finora-server
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-finora}:${POSTGRES_PASSWORD:-change_me_in_production}@db:5432/${POSTGRES_DB:-finora_db}
+      SECRET_KEY: ${SECRET_KEY:-change_me_to_a_long_random_secret_key}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+  uploads:

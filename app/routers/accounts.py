@@ -1,5 +1,6 @@
 from decimal import Decimal
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -12,6 +13,13 @@ from app.models.user import User
 from app.schemas.account import Account
 from app.schemas.account_snapshot import NetWorthHistoryEntry
 from app.services.net_worth import get_net_worth_history, create_snapshot
+
+
+_VALID_ACCOUNT_TYPES = {"checking", "savings", "credit_card", "investment", "cash"}
+
+
+class AccountTypeUpdate(BaseModel):
+    type: str
 
 router = APIRouter()
 
@@ -81,3 +89,38 @@ async def create_daily_snapshot(
         "total_assets": float(snapshot.total_assets),
         "total_liabilities": float(snapshot.total_liabilities),
     }
+
+
+@router.patch("/accounts/{account_id}", response_model=Account)
+async def update_account_type(
+    account_id: str,
+    body: AccountTypeUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the type of an account (e.g. checking, savings, credit_card, investment, cash)."""
+    if body.type not in _VALID_ACCOUNT_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid type '{body.type}'. Must be one of: {', '.join(sorted(_VALID_ACCOUNT_TYPES))}",
+        )
+
+    account = await db.get(AccountModel, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    account.type = body.type
+    await db.commit()
+    await db.refresh(account)
+
+    return Account(
+        id=account.id,
+        name=account.name,
+        type=account.type,
+        balance=account.balance,
+        available_balance=account.available_balance,
+        institution_name=account.institution_name,
+        color=account.color,
+        created_at=account.created_at,
+        updated_at=account.updated_at,
+    )
