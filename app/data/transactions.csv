@@ -1,0 +1,160 @@
+days_ago,title,merchant_name,original_description,amount,type,category,account_id,subscription_name
+-180,Employer Paycheck,Employer Inc,EMPLOYER INC PAYROLL,2500.00,income,Paychecks,acct_checking_001,
+-179,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,62.50,expense,Groceries,acct_checking_001,
+-177,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-176,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,68.75,expense,Groceries,acct_checking_001,
+-175,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-174,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-173,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.25,expense,Groceries,acct_checking_001,
+-172,Target,Target,TARGET STORE #123,45.32,expense,Shopping,acct_credit_001,
+-171,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-169,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,64.00,expense,Groceries,acct_checking_001,
+-168,Thai Restaurant,Thai Restaurant,THAI RESTAURANT,28.00,expense,Restaurants & Bars,acct_credit_001,
+-167,Spotify Premium,Spotify,SPOTIFY PREMIUM,11.99,expense,Entertainment & Recreation,acct_credit_001,Spotify Premium
+-166,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.50,expense,Groceries,acct_checking_001,
+-165,Electric Company,Electric Co,ELECTRIC CO BILL,145.00,expense,Gas & Electric,acct_checking_001,
+-164,Panera,Panera,PANERA BREAD,14.50,expense,Restaurants & Bars,acct_credit_001,
+-162,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,66.25,expense,Groceries,acct_checking_001,
+-161,Planet Fitness,Planet Fitness,PLANET FITNESS,23.00,expense,Fitness,acct_credit_001,Planet Fitness
+-160,Apartment Rent,Landlord,APARTMENT LANDLORD,1250.00,expense,Rent,acct_checking_001,
+-159,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.00,expense,Groceries,acct_checking_001,
+-158,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-156,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,65.75,expense,Groceries,acct_checking_001,
+-155,Amazon,Amazon,AMAZON PURCHASE,78.99,expense,Shopping,acct_credit_001,
+-154,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-153,Comcast,Comcast,COMCAST BILL,89.99,expense,Internet & Cable,acct_credit_001,Internet & Cable
+-152,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,72.50,expense,Groceries,acct_checking_001,
+-151,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-150,Employer Paycheck,Employer Inc,EMPLOYER INC PAYROLL,2500.00,income,Paychecks,acct_checking_001,
+-149,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,68.00,expense,Groceries,acct_checking_001,
+-148,Pizza Place,Pizza Place,PIZZA RESTAURANT,18.75,expense,Restaurants & Bars,acct_credit_001,
+-146,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.00,expense,Groceries,acct_checking_001,
+-145,AWS,Amazon Web Services,AWS CHARGE,45.50,expense,Business Utilities & Communication,acct_credit_001,AWS
+-144,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-143,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,67.50,expense,Groceries,acct_checking_001,
+-142,Pharmacy,Pharmacy,PHARMACY STORE,34.75,expense,Shopping,acct_credit_001,
+-141,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-139,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.25,expense,Groceries,acct_checking_001,
+-138,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-137,Spotify Premium,Spotify,SPOTIFY PREMIUM,11.99,expense,Entertainment & Recreation,acct_credit_001,Spotify Premium
+-136,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.75,expense,Groceries,acct_checking_001,
+-135,GitHub Pro,GitHub,GITHUB PRO,4.00,expense,Business Utilities & Communication,acct_credit_001,GitHub Pro
+-134,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-132,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,72.00,expense,Groceries,acct_checking_001,
+-131,Electric Company,Electric Co,ELECTRIC CO BILL,145.00,expense,Gas & Electric,acct_checking_001,
+-130,Thai Restaurant,Thai Restaurant,THAI RESTAURANT,28.00,expense,Restaurants & Bars,acct_credit_001,
+-129,Adobe Creative Cloud,Adobe,ADOBE SUBSCRIPTION,59.99,expense,Software & Services,acct_credit_001,Adobe Creative Cloud
+-128,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,66.50,expense,Groceries,acct_checking_001,
+-127,Best Buy,Best Buy,BEST BUY STORE,125.50,expense,Electronics,acct_credit_001,
+-126,Planet Fitness,Planet Fitness,PLANET FITNESS,23.00,expense,Fitness,acct_credit_001,Planet Fitness
+-125,Apartment Rent,Landlord,APARTMENT LANDLORD,1250.00,expense,Rent,acct_checking_001,
+-124,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.75,expense,Groceries,acct_checking_001,
+-123,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-121,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,65.25,expense,Groceries,acct_checking_001,
+-120,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-119,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-118,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.50,expense,Groceries,acct_checking_001,
+-117,Target,Target,TARGET STORE #123,45.32,expense,Shopping,acct_credit_001,
+-116,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-114,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,68.25,expense,Groceries,acct_checking_001,
+-113,Panera,Panera,PANERA BREAD,14.50,expense,Restaurants & Bars,acct_credit_001,
+-112,Spotify Premium,Spotify,SPOTIFY PREMIUM,11.99,expense,Entertainment & Recreation,acct_credit_001,Spotify Premium
+-111,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.50,expense,Groceries,acct_checking_001,
+-110,Comcast,Comcast,COMCAST BILL,89.99,expense,Internet & Cable,acct_credit_001,Internet & Cable
+-109,Electric Company,Electric Co,ELECTRIC CO BILL,145.00,expense,Gas & Electric,acct_checking_001,
+-108,Employer Paycheck,Employer Inc,EMPLOYER INC PAYROLL,2500.00,income,Paychecks,acct_checking_001,
+-107,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,72.75,expense,Groceries,acct_checking_001,
+-106,Amazon,Amazon,AMAZON PURCHASE,78.99,expense,Shopping,acct_credit_001,
+-104,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,67.00,expense,Groceries,acct_checking_001,
+-103,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-102,AWS,Amazon Web Services,AWS CHARGE,45.50,expense,Business Utilities & Communication,acct_credit_001,AWS
+-101,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-100,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.00,expense,Groceries,acct_checking_001,
+-99,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-97,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.25,expense,Groceries,acct_checking_001,
+-96,Planet Fitness,Planet Fitness,PLANET FITNESS,23.00,expense,Fitness,acct_credit_001,Planet Fitness
+-95,Apple One,Apple,APPLE SUBSCRIPTION,34.95,expense,Entertainment & Recreation,acct_credit_001,Apple One
+-94,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.75,expense,Groceries,acct_checking_001,
+-93,GitHub Pro,GitHub,GITHUB PRO,4.00,expense,Business Utilities & Communication,acct_credit_001,GitHub Pro
+-92,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-90,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,68.50,expense,Groceries,acct_checking_001,
+-89,Apartment Rent,Landlord,APARTMENT LANDLORD,1250.00,expense,Rent,acct_checking_001,
+-88,Thai Restaurant,Thai Restaurant,THAI RESTAURANT,28.00,expense,Restaurants & Bars,acct_credit_001,
+-87,Spotify Premium,Spotify,SPOTIFY PREMIUM,11.99,expense,Entertainment & Recreation,acct_credit_001,Spotify Premium
+-86,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,65.75,expense,Groceries,acct_checking_001,
+-85,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-84,Pharmacy,Pharmacy,PHARMACY STORE,34.75,expense,Shopping,acct_credit_001,
+-83,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,72.25,expense,Groceries,acct_checking_001,
+-82,Pizza Place,Pizza Place,PIZZA RESTAURANT,18.75,expense,Restaurants & Bars,acct_credit_001,
+-80,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.50,expense,Groceries,acct_checking_001,
+-79,Electric Company,Electric Co,ELECTRIC CO BILL,145.00,expense,Gas & Electric,acct_checking_001,
+-78,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-77,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,66.00,expense,Groceries,acct_checking_001,
+-76,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-74,Employer Paycheck,Employer Inc,EMPLOYER INC PAYROLL,2500.00,income,Paychecks,acct_checking_001,
+-73,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.75,expense,Groceries,acct_checking_001,
+-72,Adobe Creative Cloud,Adobe,ADOBE SUBSCRIPTION,59.99,expense,Software & Services,acct_credit_001,Adobe Creative Cloud
+-71,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.00,expense,Groceries,acct_checking_001,
+-70,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-69,AWS,Amazon Web Services,AWS CHARGE,45.50,expense,Business Utilities & Communication,acct_credit_001,AWS
+-67,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,68.25,expense,Groceries,acct_checking_001,
+-66,Target,Target,TARGET STORE #123,45.32,expense,Shopping,acct_credit_001,
+-65,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-64,Spotify Premium,Spotify,SPOTIFY PREMIUM,11.99,expense,Entertainment & Recreation,acct_credit_001,Spotify Premium
+-63,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,67.50,expense,Groceries,acct_checking_001,
+-62,Panera,Panera,PANERA BREAD,14.50,expense,Restaurants & Bars,acct_credit_001,
+-60,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.75,expense,Groceries,acct_checking_001,
+-59,Comcast,Comcast,COMCAST BILL,89.99,expense,Internet & Cable,acct_credit_001,Internet & Cable
+-58,Planet Fitness,Planet Fitness,PLANET FITNESS,23.00,expense,Fitness,acct_credit_001,Planet Fitness
+-57,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,72.00,expense,Groceries,acct_checking_001,
+-56,Electric Company,Electric Co,ELECTRIC CO BILL,145.00,expense,Gas & Electric,acct_checking_001,
+-55,Amazon,Amazon,AMAZON PURCHASE,78.99,expense,Shopping,acct_credit_001,
+-54,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-52,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.00,expense,Groceries,acct_checking_001,
+-51,GitHub Pro,GitHub,GITHUB PRO,4.00,expense,Business Utilities & Communication,acct_credit_001,GitHub Pro
+-50,Apartment Rent,Landlord,APARTMENT LANDLORD,1250.00,expense,Rent,acct_checking_001,
+-49,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,65.50,expense,Groceries,acct_checking_001,
+-48,Thai Restaurant,Thai Restaurant,THAI RESTAURANT,28.00,expense,Restaurants & Bars,acct_credit_001,
+-47,Apple One,Apple,APPLE SUBSCRIPTION,34.95,expense,Entertainment & Recreation,acct_credit_001,Apple One
+-46,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.25,expense,Groceries,acct_checking_001,
+-45,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-44,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-43,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,68.75,expense,Groceries,acct_checking_001,
+-42,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-40,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.00,expense,Groceries,acct_checking_001,
+-39,Best Buy,Best Buy,BEST BUY STORE,125.50,expense,Electronics,acct_credit_001,
+-38,Employer Paycheck,Employer Inc,EMPLOYER INC PAYROLL,2500.00,income,Paychecks,acct_checking_001,
+-37,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,67.25,expense,Groceries,acct_checking_001,
+-36,Spotify Premium,Spotify,SPOTIFY PREMIUM,11.99,expense,Entertainment & Recreation,acct_credit_001,Spotify Premium
+-35,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.50,expense,Groceries,acct_checking_001,
+-34,AWS,Amazon Web Services,AWS CHARGE,45.50,expense,Business Utilities & Communication,acct_credit_001,AWS
+-33,Comcast,Comcast,COMCAST BILL,89.99,expense,Internet & Cable,acct_credit_001,Internet & Cable
+-32,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,72.50,expense,Groceries,acct_checking_001,
+-31,Pharmacy,Pharmacy,PHARMACY STORE,34.75,expense,Shopping,acct_credit_001,
+-30,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-28,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.25,expense,Groceries,acct_checking_001,
+-27,Electric Company,Electric Co,ELECTRIC CO BILL,145.00,expense,Gas & Electric,acct_checking_001,
+-26,Planet Fitness,Planet Fitness,PLANET FITNESS,23.00,expense,Fitness,acct_credit_001,Planet Fitness
+-25,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,66.75,expense,Groceries,acct_checking_001,
+-24,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-23,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-22,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,68.50,expense,Groceries,acct_checking_001,
+-21,Panera,Panera,PANERA BREAD,14.50,expense,Restaurants & Bars,acct_credit_001,
+-19,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.75,expense,Groceries,acct_checking_001,
+-18,Adobe Creative Cloud,Adobe,ADOBE SUBSCRIPTION,59.99,expense,Software & Services,acct_credit_001,Adobe Creative Cloud
+-17,Target,Target,TARGET STORE #123,45.32,expense,Shopping,acct_credit_001,
+-16,Apartment Rent,Landlord,APARTMENT LANDLORD,1250.00,expense,Rent,acct_checking_001,
+-15,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.00,expense,Groceries,acct_checking_001,
+-14,Employer Paycheck,Employer Inc,EMPLOYER INC PAYROLL,2500.00,income,Paychecks,acct_checking_001,
+-13,Chipotle,Chipotle,CHIPOTLE #5678,12.50,expense,Restaurants & Bars,acct_credit_001,
+-11,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,70.50,expense,Groceries,acct_checking_001,
+-10,GitHub Pro,GitHub,GITHUB PRO,4.00,expense,Business Utilities & Communication,acct_credit_001,GitHub Pro
+-9,Spotify Premium,Spotify,SPOTIFY PREMIUM,11.99,expense,Entertainment & Recreation,acct_credit_001,Spotify Premium
+-8,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,67.75,expense,Groceries,acct_checking_001,
+-7,Shell Gas Station,Shell,SHELL GAS STN #567,52.00,expense,Gas,acct_checking_001,
+-6,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,71.50,expense,Groceries,acct_checking_001,
+-5,Starbucks,Starbucks,STARBUCKS #456,6.75,expense,Coffee Shops,acct_credit_001,
+-4,AWS,Amazon Web Services,AWS CHARGE,45.50,expense,Business Utilities & Communication,acct_credit_001,AWS
+-3,Whole Foods Market,Whole Foods,WHOLEFDS MKT #1234,69.25,expense,Groceries,acct_checking_001,
+-2,Netflix,Netflix,NETFLIX SUBSCRIPTION,15.99,expense,Entertainment & Recreation,acct_credit_001,Netflix
+-1,Comcast,Comcast,COMCAST BILL,89.99,expense,Internet & Cable,acct_credit_001,Internet & Cable

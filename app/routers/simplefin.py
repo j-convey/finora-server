@@ -15,6 +15,7 @@ from app.schemas.simplefin import (
     SimplefinConnectRequest,
     SimplefinFetchResponse,
     SimplefinStatusResponse,
+    NewTransaction,
 )
 from app.services.simplefin import claim_access_url, fetch_simplefin_data
 
@@ -38,6 +39,10 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
     institutions: List[str] = []
     accounts_updated = 0
     transactions_added = 0
+    new_transactions: List[NewTransaction] = []
+
+    # Build account name lookup
+    account_names: dict[str, str] = {}
 
     for idx, sf_acct in enumerate(sf_accounts):
         org_name = sf_acct.get("org", {}).get("name")
@@ -45,6 +50,8 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
             institutions.append(org_name)
 
         account_id = sf_acct["id"]
+        account_name = sf_acct.get("name", "Unknown")
+        account_names[account_id] = account_name
         balance = Decimal(sf_acct.get("balance", "0"))
 
         # Preserve color and type if the account already exists
@@ -54,7 +61,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
 
         await db.merge(AccountModel(
             id=account_id,
-            name=sf_acct.get("name", "Unknown"),
+            name=account_name,
             type=acct_type,
             balance=balance,
             available_balance=Decimal(str(sf_acct["balance-available"])) if sf_acct.get("balance-available") else None,
@@ -67,25 +74,22 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
             amount_raw = Decimal(sf_txn.get("amount", "0"))
             txn_type = "income" if amount_raw >= 0 else "expense"
             raw_description = sf_txn.get("description", "Unknown")
-            # SimpleFIN doesn't standardize a category field — different
-            # bridges expose it under "category" or inside "extra". Keep the
-            # raw value so we can build a mapping later; leave the canonical
-            # `category` NULL until then (the client treats NULL as
-            # "Uncategorized").
             extra = sf_txn.get("extra") or {}
             provider_category = (
                 sf_txn.get("category")
                 or extra.get("category")
                 or extra.get("simplefin_category")
             )
-            # Phase 1: do not auto-link subscriptions yet. This hook point is
-            # where future matching logic should set subscription_id.
+
+            txn_id = sf_txn["id"]
+            is_new = (await db.get(TransactionModel, txn_id)) is None
+
             await db.merge(TransactionModel(
-                id=sf_txn["id"],
+                id=txn_id,
                 title=raw_description,
                 original_description=raw_description,
                 merchant_name=sf_txn.get("payee") or sf_txn.get("merchant_name"),
-                provider_transaction_id=sf_txn["id"],
+                provider_transaction_id=txn_id,
                 amount=abs(amount_raw),
                 type=txn_type,
                 category=None,
@@ -96,13 +100,23 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
                 subscription_id=None,
                 notes=None,
             ))
-            transactions_added += 1
+
+            if is_new:
+                transactions_added += 1
+                if txn_type == "expense":
+                    new_transactions.append(NewTransaction(
+                        id=txn_id,
+                        title=raw_description,
+                        amount=abs(amount_raw),
+                        account_name=account_names.get(account_id),
+                    ))
 
     await db.commit()
 
     return {
         "accounts_updated": accounts_updated,
         "transactions_added": transactions_added,
+        "new_transactions": new_transactions,
         "institutions": institutions,
         "last_synced_at": datetime.now(tz=timezone.utc),
     }
@@ -168,6 +182,7 @@ async def fetch(db: AsyncSession = Depends(get_db)):
         ok=True,
         accounts_updated=result["accounts_updated"],
         transactions_added=result["transactions_added"],
+        new_transactions=result["new_transactions"],
     )
 
 
