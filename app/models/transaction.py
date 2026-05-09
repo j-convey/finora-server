@@ -3,8 +3,12 @@ from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, Numeric, String, Integer, func, CheckConstraint, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
+from typing import TYPE_CHECKING
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.transaction_reimbursement import TransactionReimbursement
 
 
 class Transaction(Base):
@@ -50,6 +54,15 @@ class Transaction(Base):
         index=True,
     )
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Household that owns this transaction — mirrors account.household_id.
+    # Populated on import/sync. Enables direct tenant-scoped queries without
+    # joining through accounts.
+    household_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("households.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     # Split transaction support — see docs/architecture for double-counting rules.
     # True only on the "ghost" parent created when a user splits a transaction.
     # Budget / analytics queries MUST filter WHERE is_split_parent = FALSE.
@@ -85,4 +98,22 @@ class Transaction(Base):
         backref=backref("parent", remote_side="Transaction.id"),
         cascade="all, delete-orphan",
         foreign_keys="Transaction.parent_transaction_id",
+    )
+
+    # Reimbursement relationships.
+    # reimbursed_by: if this is an expense, lists all reimbursement links where it
+    #   was paid back (partially or fully) by an income transaction.
+    # reimburses: if this is an income, lists all reimbursement links where it
+    #   offsets an expense.
+    reimbursed_by: Mapped[list["TransactionReimbursement"]] = relationship(
+        "TransactionReimbursement",
+        foreign_keys="TransactionReimbursement.expense_transaction_id",
+        back_populates="expense_transaction",
+        cascade="all, delete-orphan",
+    )
+    reimburses: Mapped[list["TransactionReimbursement"]] = relationship(
+        "TransactionReimbursement",
+        foreign_keys="TransactionReimbursement.income_transaction_id",
+        back_populates="income_transaction",
+        cascade="all, delete-orphan",
     )
