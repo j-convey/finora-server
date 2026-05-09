@@ -97,14 +97,15 @@ _DEFAULT_CATEGORIES = [
     "Balance Adjustments",
 ]
 
+# Budget definitions use category names; IDs are looked up at seed time.
 _DEFAULT_BUDGETS = [
-    {"id": "b1", "category": "Groceries",     "allocated": Decimal("400.00"), "color": "#66BB6A"},
-    {"id": "b2", "category": "Dining",        "allocated": Decimal("200.00"), "color": "#FFA726"},
-    {"id": "b3", "category": "Transport",     "allocated": Decimal("150.00"), "color": "#42A5F5"},
-    {"id": "b4", "category": "Entertainment", "allocated": Decimal("100.00"), "color": "#AB47BC"},
-    {"id": "b5", "category": "Subscriptions", "allocated": Decimal("50.00"),  "color": "#26A69A"},
-    {"id": "b6", "category": "Health",        "allocated": Decimal("100.00"), "color": "#EF5350"},
-    {"id": "b7", "category": "Shopping",      "allocated": Decimal("150.00"), "color": "#EC407A"},
+    {"id": "b1", "household_id": 1, "category_name": "Groceries",              "allocated": Decimal("400.00"), "color": "#66BB6A"},
+    {"id": "b2", "household_id": 1, "category_name": "Restaurants & Bars",     "allocated": Decimal("200.00"), "color": "#FFA726"},
+    {"id": "b3", "household_id": 1, "category_name": "Gas",                    "allocated": Decimal("150.00"), "color": "#42A5F5"},
+    {"id": "b4", "household_id": 1, "category_name": "Entertainment & Recreation", "allocated": Decimal("100.00"), "color": "#AB47BC"},
+    {"id": "b5", "household_id": 1, "category_name": "Shopping",               "allocated": Decimal("150.00"), "color": "#EC407A"},
+    {"id": "b6", "household_id": 1, "category_name": "Medical",                "allocated": Decimal("100.00"), "color": "#EF5350"},
+    {"id": "b7", "household_id": 1, "category_name": "Fitness",                "allocated": Decimal("50.00"),  "color": "#26A69A"},
 ]
 
 
@@ -137,6 +138,16 @@ async def seed_categories() -> None:
             print(f"✅ Seeded {added} default categories.")
 
 
+async def _load_category_name_to_id(db) -> dict[str, int]:
+    """Return a lowercase name → id mapping for all system categories."""
+    result = await db.execute(
+        select(CategoryModel.id, CategoryModel.name).where(
+            CategoryModel.household_id.is_(None)
+        )
+    )
+    return {name.lower(): cat_id for cat_id, name in result.all()}
+
+
 async def seed_budgets() -> None:
     """Insert default budget rows if the table is empty."""
     async with AsyncSessionLocal() as db:
@@ -144,8 +155,20 @@ async def seed_budgets() -> None:
         if result.scalars().first() is not None:
             return  # already seeded
 
+        cat_map = await _load_category_name_to_id(db)
+
         for row in _DEFAULT_BUDGETS:
-            db.add(BudgetModel(**row))
+            category_id = cat_map.get(row["category_name"].lower())
+            if category_id is None:
+                print(f"⚠️  Budget skipped — unknown category: {row['category_name']!r}")
+                continue
+            db.add(BudgetModel(
+                id=row["id"],
+                household_id=row["household_id"],
+                category_id=category_id,
+                allocated=row["allocated"],
+                color=row["color"],
+            ))
 
         await db.commit()
         print(f"✅ Seeded {len(_DEFAULT_BUDGETS)} default budgets.")
@@ -161,6 +184,7 @@ async def seed_accounts() -> None:
         accounts = [
             {
                 "id": "acct_checking_001",
+                "household_id": 1,
                 "name": "Chase Checking",
                 "type": "checking",
                 "balance": Decimal("4850.32"),
@@ -170,6 +194,7 @@ async def seed_accounts() -> None:
             },
             {
                 "id": "acct_savings_001",
+                "household_id": 1,
                 "name": "Capital One Savings",
                 "type": "savings",
                 "balance": Decimal("15250.00"),
@@ -179,6 +204,7 @@ async def seed_accounts() -> None:
             },
             {
                 "id": "acct_credit_001",
+                "household_id": 1,
                 "name": "Amazon Prime Rewards Visa",
                 "type": "credit",
                 "balance": Decimal("-2347.89"),  # Negative = money owed
@@ -346,20 +372,28 @@ async def seed_transactions() -> None:
     
     CSV should be at app/data/transactions.csv with columns:
     days_ago, title, merchant_name, original_description, amount, type, category, account_id, subscription_name
+    
+    The 'category' column contains a category name (string). The seeder looks up
+    the corresponding category_id from the categories table. Unknown names fall
+    back to 'Uncategorized'.
     """
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(TransactionModel).limit(1))
         if result.scalars().first() is not None:
             return  # already seeded
 
-        # Load subscription mapping
+        # Load category name → id mapping (system categories only)
+        cat_map = await _load_category_name_to_id(db)
+        uncategorized_id = cat_map.get("uncategorized")
+
+        # Load subscription name → id mapping
         subs = await db.execute(select(SubscriptionModel).where(
             SubscriptionModel.household_id == 1
         ))
         subscription_map = {sub.name.lower(): sub.id for sub in subs.scalars().all()}
 
         csv_path = os.path.join(os.path.dirname(__file__), "../data/transactions.csv")
-        
+
         if not os.path.exists(csv_path):
             print(f"⚠️  Transaction CSV not found at {csv_path}")
             return
@@ -374,13 +408,17 @@ async def seed_transactions() -> None:
                 for row in reader:
                     days_ago = int(row["days_ago"])
                     transaction_date = today + timedelta(days=days_ago)
-                    
+
+                    # Resolve category name → id
+                    category_name = row.get("category", "").strip()
+                    category_id = cat_map.get(category_name.lower(), uncategorized_id)
+
                     # Match subscription name (case-insensitive)
                     subscription_name = row.get("subscription_name", "").strip()
                     subscription_id = None
                     if subscription_name:
                         subscription_id = subscription_map.get(subscription_name.lower())
-                    
+
                     transactions.append(
                         TransactionModel(
                             id=f"txn_{transaction_id_counter}",
@@ -390,8 +428,8 @@ async def seed_transactions() -> None:
                             provider_transaction_id=f"provider_{transaction_id_counter}",
                             amount=Decimal(row["amount"].strip()),
                             type=row["type"].strip(),
-                            category=row["category"].strip(),
-                            provider_category=row["category"].strip().upper(),
+                            category_id=category_id,
+                            provider_category=category_name,  # preserve raw name as provider string
                             date=datetime.combine(transaction_date, datetime.min.time()),
                             pending=False,
                             account_id=row["account_id"].strip(),
@@ -400,7 +438,6 @@ async def seed_transactions() -> None:
                     )
                     transaction_id_counter += 1
 
-            # Add all transactions in batch
             for txn in transactions:
                 db.add(txn)
 

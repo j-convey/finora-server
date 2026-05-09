@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -19,6 +19,9 @@ class Transaction(BaseModel):
     account_id: Optional[str] = None
     subscription_id: Optional[str] = None
     notes: Optional[str] = None
+    is_split_parent: bool = False
+    parent_transaction_id: Optional[str] = None
+    requires_user_review: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -38,3 +41,22 @@ class TransactionUpdate(BaseModel):
     notes: Optional[str] = None
 
     model_config = {"extra": "ignore"}
+
+
+class SplitEntry(BaseModel):
+    """A single split line within a POST /transactions/:id/split request."""
+
+    title: str
+    amount: Decimal
+    category: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SplitRequest(BaseModel):
+    """Payload for POST /transactions/:id/split.
+
+    The sum of splits[*].amount must exactly equal the parent transaction's amount.
+    At least two splits are required.
+    """
+
+    splits: List[SplitEntry]

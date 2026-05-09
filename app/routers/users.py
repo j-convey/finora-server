@@ -72,6 +72,27 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return _user_to_response(current_user)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/users/me/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify the current password then hash and store the new one."""
+    if not pwd_context.verify(body.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    current_user.hashed_password = pwd_context.hash(body.new_password)
+    await db.commit()
+
+
 @router.patch("/users/me", response_model=UserResponse)
 async def update_me(
     body: UserUpdate,

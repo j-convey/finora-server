@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -9,15 +9,20 @@ from app.core.database import Base
 class Category(Base):
     """Canonical list of transaction categories.
 
-    System categories (is_system=True) are seeded on startup and cannot be
-    removed by users. Names are stored in canonical form (e.g. "Groceries")
-    and are validated case-insensitively when used elsewhere.
+    System categories (is_system=True, household_id=NULL) are seeded on startup 
+    and shared across all households. Custom categories have a specific household_id.
     """
 
     __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("household_id", "name", name="uq_categories_household_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    household_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(

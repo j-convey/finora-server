@@ -1,17 +1,23 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, JSON, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, JSON, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
 
 class SimplefinConfig(Base):
-    """Singleton row (id=1) holding the SimpleFIN connection state."""
+    """SimpleFIN connection state per household.
+    
+    One row per household (household_id is primary key). Stores encrypted
+    access URL and sync metadata for that household's SimpleFIN integration.
+    """
 
     __tablename__ = "simplefin_config"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    household_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("households.id", ondelete="CASCADE"), primary_key=True
+    )
     access_url_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     institutions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     last_synced_at: Mapped[datetime | None] = mapped_column(

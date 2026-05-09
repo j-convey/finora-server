@@ -3,12 +3,14 @@ from decimal import Decimal
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
 from app.models.account import Account as AccountModel
+from app.models.category import Category as CategoryModel
 from app.models.simplefin_config import SimplefinConfig
 from app.models.transaction import Transaction as TransactionModel
 from app.schemas.simplefin import (
@@ -26,9 +28,108 @@ _COLORS = [
     "#009688", "#F44336", "#00BCD4", "#FF5722",
 ]
 
+# Maps SimpleFIN provider category strings (lowercased) to our system category names.
+# provider_category is preserved as-is; this mapping only determines category_id.
+_PROVIDER_CATEGORY_MAP: dict[str, str] = {
+    "food and drink": "Restaurants & Bars",
+    "food & drink": "Restaurants & Bars",
+    "restaurants": "Restaurants & Bars",
+    "dining": "Restaurants & Bars",
+    "fast food": "Restaurants & Bars",
+    "coffee shops": "Coffee Shops",
+    "groceries": "Groceries",
+    "supermarkets": "Groceries",
+    "shopping": "Shopping",
+    "general merchandise": "Shopping",
+    "clothing": "Clothing",
+    "electronics": "Electronics",
+    "travel": "Travel & Vacation",
+    "airlines": "Travel & Vacation",
+    "hotels": "Travel & Vacation",
+    "entertainment": "Entertainment & Recreation",
+    "recreation": "Entertainment & Recreation",
+    "subscription": "Entertainment & Recreation",
+    "streaming": "Entertainment & Recreation",
+    "utilities": "Gas & Electric",
+    "gas and electric": "Gas & Electric",
+    "electric": "Gas & Electric",
+    "internet": "Internet & Cable",
+    "cable": "Internet & Cable",
+    "phone": "Phone",
+    "mobile phone": "Phone",
+    "income": "Paychecks",
+    "payroll": "Paychecks",
+    "direct deposit": "Paychecks",
+    "transfer": "Transfer",
+    "gas": "Gas",
+    "automotive": "Gas",
+    "auto": "Auto Payment",
+    "insurance": "Insurance",
+    "health": "Medical",
+    "healthcare": "Medical",
+    "medical": "Medical",
+    "pharmacy": "Medical",
+    "fitness": "Fitness",
+    "gym": "Fitness",
+    "education": "Education",
+    "taxes": "Taxes",
+    "personal care": "Personal",
+    "pets": "Pets",
+    "mortgage": "Mortgage",
+    "rent": "Rent",
+    "home improvement": "Home Improvement",
+    "atm": "Cash & ATM",
+    "cash": "Cash & ATM",
+    "fees": "Financial Fees",
+    "bank fees": "Financial Fees",
+    "interest": "Interest",
+    "credit card payment": "Credit Card Payment",
+}
+
 
 def _pick_color(index: int) -> str:
     return _COLORS[index % len(_COLORS)]
+
+
+async def _load_category_map(db: AsyncSession) -> tuple[dict[str, int], int]:
+    """Load all system categories into a name→id dict and return the Uncategorized ID."""
+    result = await db.execute(
+        select(CategoryModel.id, CategoryModel.name).where(
+            CategoryModel.household_id.is_(None)
+        )
+    )
+    name_to_id = {name.lower(): cat_id for cat_id, name in result.all()}
+    uncategorized_id = name_to_id.get("uncategorized", next(iter(name_to_id.values())))
+    return name_to_id, uncategorized_id
+
+
+def _map_provider_category(
+    provider_category: str | None,
+    name_to_id: dict[str, int],
+    uncategorized_id: int,
+) -> int:
+    """Map a SimpleFIN provider category string to a system category_id.
+
+    Strategy:
+    1. Direct case-insensitive match against system category names.
+    2. Lookup in our provider→system mapping table.
+    3. Fall back to Uncategorized.
+    """
+    if not provider_category:
+        return uncategorized_id
+
+    lower = provider_category.strip().lower()
+
+    # Direct match against system category names
+    if lower in name_to_id:
+        return name_to_id[lower]
+
+    # Mapped match via provider dictionary
+    mapped = _PROVIDER_CATEGORY_MAP.get(lower)
+    if mapped and mapped.lower() in name_to_id:
+        return name_to_id[mapped.lower()]
+
+    return uncategorized_id
 
 
 async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
@@ -36,12 +137,14 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
     data = await fetch_simplefin_data(access_url)
     sf_accounts = data.get("accounts", [])
 
+    # Load category lookup once for the entire sync
+    name_to_id, uncategorized_id = await _load_category_map(db)
+
     institutions: List[str] = []
     accounts_updated = 0
     transactions_added = 0
     new_transactions: List[NewTransaction] = []
 
-    # Build account name lookup
     account_names: dict[str, str] = {}
 
     for idx, sf_acct in enumerate(sf_accounts):
@@ -61,6 +164,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
 
         await db.merge(AccountModel(
             id=account_id,
+            household_id=1,
             name=account_name,
             type=acct_type,
             balance=balance,
@@ -81,8 +185,29 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
                 or extra.get("simplefin_category")
             )
 
+            # Map provider category string → category_id (preserving raw in provider_category)
+            category_id = _map_provider_category(provider_category, name_to_id, uncategorized_id)
+
             txn_id = sf_txn["id"]
-            is_new = (await db.get(TransactionModel, txn_id)) is None
+            incoming_amount = abs(amount_raw)
+            existing_txn = await db.get(TransactionModel, txn_id)
+            is_new = existing_txn is None
+
+            # Split-parent amount-drift check (pending → posted edge case).
+            # If SimpleFIN changes the amount of a transaction that the user already
+            # split, the split math is now invalid.  We update the parent amount and
+            # flag it for user review so the client can prompt a re-reconcile.
+            if (
+                existing_txn is not None
+                and existing_txn.is_split_parent
+                and existing_txn.amount != incoming_amount
+            ):
+                existing_txn.amount = incoming_amount
+                existing_txn.requires_user_review = True
+                existing_txn.pending = sf_txn.get("pending", False)
+                db.add(existing_txn)
+                # Skip the full merge below — we've handled this row already.
+                continue
 
             await db.merge(TransactionModel(
                 id=txn_id,
@@ -90,15 +215,18 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
                 original_description=raw_description,
                 merchant_name=sf_txn.get("payee") or sf_txn.get("merchant_name"),
                 provider_transaction_id=txn_id,
-                amount=abs(amount_raw),
+                amount=incoming_amount,
                 type=txn_type,
-                category=None,
+                category_id=category_id,
                 provider_category=provider_category,
                 date=datetime.fromtimestamp(sf_txn["posted"], tz=timezone.utc),
                 pending=sf_txn.get("pending", False),
                 account_id=account_id,
                 subscription_id=None,
                 notes=None,
+                is_split_parent=False,
+                parent_transaction_id=None,
+                requires_user_review=False,
             ))
 
             if is_new:
@@ -107,7 +235,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
                     new_transactions.append(NewTransaction(
                         id=txn_id,
                         title=raw_description,
-                        amount=abs(amount_raw),
+                        amount=incoming_amount,
                         account_name=account_names.get(account_id),
                     ))
 
@@ -145,7 +273,7 @@ async def connect(body: SimplefinConnectRequest, db: AsyncSession = Depends(get_
     result = await _do_fetch(access_url, db)
 
     await db.merge(SimplefinConfig(
-        id=1,
+        household_id=1,
         access_url_encrypted=encrypted,
         institutions=result["institutions"],
         last_synced_at=result["last_synced_at"],
@@ -171,7 +299,7 @@ async def fetch(db: AsyncSession = Depends(get_db)):
 
     # Update config sync metadata
     await db.merge(SimplefinConfig(
-        id=1,
+        household_id=1,
         access_url_encrypted=encrypted_url,
         institutions=result["institutions"],
         last_synced_at=result["last_synced_at"],
