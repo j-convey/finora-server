@@ -97,13 +97,17 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(status_code=500, content={"error": str(exc)})
+    return JSONResponse(status_code=500, content={"error": "An internal server error occurred"})
 
-# CORS - adjust for production
+# CORS — wildcard origins cannot be combined with allow_credentials=True (CORS spec
+# §3.2.5 forbids it; browsers will reject such responses). Specify your frontend
+# origin(s) via the ALLOWED_ORIGINS env var in production, e.g.:
+#   ALLOWED_ORIGINS=https://app.yourdomain.com
+# Wildcard is acceptable only for fully public, unauthenticated APIs.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change this in production
-    allow_credentials=True,
+    allow_origins=["*"],  # TODO: restrict to known frontend origins in production
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -86,6 +86,7 @@ async def _resolve_category_id(db: AsyncSession, name: str) -> int:
 @router.get("/transactions", response_model=List[Transaction])
 async def get_transactions(
     subscription_id: str | None = Query(None, description="Optional subscription filter"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(TransactionModel).options(selectinload(TransactionModel.category_rel))
@@ -101,6 +102,7 @@ async def get_transactions(
 async def update_transaction(
     transaction_id: str,
     body: TransactionUpdate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     txn = await db.get(TransactionModel, transaction_id)
@@ -143,6 +145,7 @@ async def update_transaction(
 async def split_transaction(
     transaction_id: str,
     body: SplitRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Split a transaction into two or more categorised child transactions.
@@ -238,6 +241,7 @@ async def split_transaction(
 @router.delete("/transactions/{transaction_id}/split", status_code=204)
 async def unsplit_transaction(
     transaction_id: str,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Remove all child splits from a parent transaction, restoring it to a normal row.

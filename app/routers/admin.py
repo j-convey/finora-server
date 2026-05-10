@@ -76,7 +76,10 @@ async def _export_row_dicts(db: AsyncSession, model_cls, order_by=None) -> List[
 
 
 @router.post("/admin/reset-database")
-async def reset_database(db: AsyncSession = Depends(get_db)):
+async def reset_database(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     **CAUTION: This endpoint deletes ALL data from the database.**
 
@@ -151,7 +154,10 @@ async def reset_database(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/admin/export-database", response_model=DatabaseExport)
-async def export_database(db: AsyncSession = Depends(get_db)):
+async def export_database(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Export the entire database as JSON.
 
@@ -210,7 +216,11 @@ async def export_database(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/admin/import-database")
-async def import_database(payload: DatabaseImport, db: AsyncSession = Depends(get_db)):
+async def import_database(
+    payload: DatabaseImport,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Import a previously exported database state.
 

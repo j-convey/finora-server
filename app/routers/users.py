@@ -36,6 +36,7 @@ AVATAR_DIR = Path("/app/uploads/avatars")
 
 _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _EXT_MAP = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+_MAX_AVATAR_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 def _user_to_response(user: User) -> UserResponse:
@@ -130,6 +131,13 @@ async def upload_avatar(
             detail="Only JPEG, PNG, and WebP images are accepted",
         )
 
+    contents = await file.read()
+    if len(contents) > _MAX_AVATAR_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Avatar file must be 5 MB or smaller",
+        )
+
     AVATAR_DIR.mkdir(parents=True, exist_ok=True)
 
     # Remove the old avatar file if one exists.
@@ -140,7 +148,7 @@ async def upload_avatar(
 
     ext = _EXT_MAP[file.content_type]
     dest = AVATAR_DIR / f"{uuid.uuid4()}.{ext}"
-    dest.write_bytes(await file.read())
+    dest.write_bytes(contents)
 
     current_user.profile_picture_path = str(dest)
     await db.commit()

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
@@ -13,6 +14,7 @@ from app.models.account import Account as AccountModel
 from app.models.category import Category as CategoryModel
 from app.models.simplefin_config import SimplefinConfig
 from app.models.transaction import Transaction as TransactionModel
+from app.models.user import User
 from app.schemas.simplefin import (
     SimplefinConnectRequest,
     SimplefinFetchResponse,
@@ -251,7 +253,10 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
 
 
 @router.get("/status", response_model=SimplefinStatusResponse)
-async def get_status(db: AsyncSession = Depends(get_db)):
+async def get_status(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     config = await db.get(SimplefinConfig, 1)
     if not config:
         return SimplefinStatusResponse(connected=False)
@@ -263,7 +268,11 @@ async def get_status(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/connect", response_model=SimplefinStatusResponse)
-async def connect(body: SimplefinConnectRequest, db: AsyncSession = Depends(get_db)):
+async def connect(
+    body: SimplefinConnectRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     try:
         access_url = await claim_access_url(body.setup_token)
     except ValueError as exc:
@@ -288,7 +297,10 @@ async def connect(body: SimplefinConnectRequest, db: AsyncSession = Depends(get_
 
 
 @router.post("/fetch", response_model=SimplefinFetchResponse)
-async def fetch(db: AsyncSession = Depends(get_db)):
+async def fetch(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     config = await db.get(SimplefinConfig, 1)
     if not config:
         raise HTTPException(status_code=400, detail="SimpleFIN is not connected")
@@ -315,7 +327,10 @@ async def fetch(db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/disconnect")
-async def disconnect(db: AsyncSession = Depends(get_db)):
+async def disconnect(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     config = await db.get(SimplefinConfig, 1)
     if config:
         await db.delete(config)

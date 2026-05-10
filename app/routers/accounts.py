@@ -33,7 +33,10 @@ _SEED: List[Account] = [
 
 
 @router.get("/accounts", response_model=List[Account])
-async def get_accounts(db: AsyncSession = Depends(get_db)):
+async def get_accounts(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(AccountModel).order_by(AccountModel.name))
     rows = result.scalars().all()
     return [
