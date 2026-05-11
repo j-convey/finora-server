@@ -129,7 +129,7 @@ async def reset_database(
         result = await db.execute(text("DELETE FROM budgets"))
         tables_deleted["budgets"] = result.rowcount
 
-        # 6. categories (independent; will be re-seeded on next startup)
+        # 6. categories (independent)
         result = await db.execute(text("DELETE FROM categories"))
         tables_deleted["categories"] = result.rowcount
 

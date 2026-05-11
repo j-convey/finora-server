@@ -9,14 +9,6 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.core.config import settings
 from app.core.database import Base, engine, AsyncSessionLocal
 from app.routers import health, accounts, transactions, budgets, simplefin, categories, admin, subscriptions, auth, users
-from app.services.seeder import (
-    seed_budgets,
-    seed_account_snapshots,
-    seed_categories,
-    seed_accounts,
-    seed_subscriptions,
-    seed_transactions,
-)
 import app.models  # noqa: F401 — registers all models with Base.metadata
 
 
@@ -52,13 +44,7 @@ async def _auto_sync_simplefin() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Schema is managed by Alembic (startup.sh runs `alembic upgrade head`
-    # before uvicorn starts). Seed default data only.
-    await seed_categories()
-    await seed_budgets()
-    await seed_accounts()
-    await seed_subscriptions()
-    await seed_transactions()
-    await seed_account_snapshots()
+    # before uvicorn starts).
 
     # Start background scheduler — sync SimpleFIN every 2 hours
     scheduler = AsyncIOScheduler()
