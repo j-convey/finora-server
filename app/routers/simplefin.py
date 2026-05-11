@@ -22,6 +22,7 @@ from app.schemas.simplefin import (
     NewTransaction,
 )
 from app.services.simplefin import claim_access_url, fetch_simplefin_data
+from app.services.transfer_detection import RawTransaction, detect_transfers
 
 router = APIRouter()
 
@@ -134,21 +135,44 @@ def _map_provider_category(
     return uncategorized_id
 
 
+def _provider_signals_transfer(provider_category: str | None) -> bool:
+    """Return True when the bank's own category label indicates a transfer.
+
+    Used as a fallback for one-sided transfers (e.g. external bank not in
+    SimpleFIN) that the two-pass matching algorithm cannot pair up.
+    """
+    if not provider_category:
+        return False
+    mapped = _PROVIDER_CATEGORY_MAP.get(provider_category.strip().lower())
+    return mapped == "Transfer"
+
+
 async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
-    """Pull data from SimpleFIN, upsert accounts + transactions, return summary."""
+    """Pull data from SimpleFIN, upsert accounts + transactions, return summary.
+
+    Uses a two-pass approach to correctly classify internal transfers:
+      Pass 1 — Upsert all accounts and collect raw transaction data in memory.
+      Detection — detect_transfers() matches credit/debit pairs across different
+                  accounts with equal amounts and dates within 3 days.
+      Pass 2 — Upsert all transactions, assigning type="transfer" to matched
+                pairs (and to any transaction whose provider category signals a
+                transfer), rather than the naive sign-based income/expense split.
+    """
     data = await fetch_simplefin_data(access_url)
     sf_accounts = data.get("accounts", [])
 
-    # Load category lookup once for the entire sync
+    # Load category lookup once for the entire sync.
     name_to_id, uncategorized_id = await _load_category_map(db)
+    transfer_category_id = name_to_id.get("transfer", uncategorized_id)
 
     institutions: List[str] = []
     accounts_updated = 0
-    transactions_added = 0
-    new_transactions: List[NewTransaction] = []
-
     account_names: dict[str, str] = {}
 
+    # Each entry is (sf_txn dict, account_id).  Populated in Pass 1, consumed in Pass 2.
+    pending_txns: List[tuple[dict, str]] = []
+
+    # ── Pass 1: Upsert accounts, collect raw transaction data ─────────────────
     for idx, sf_acct in enumerate(sf_accounts):
         org_name = sf_acct.get("org", {}).get("name")
         if org_name and org_name not in institutions:
@@ -159,7 +183,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
         account_names[account_id] = account_name
         balance = Decimal(sf_acct.get("balance", "0"))
 
-        # Preserve color and type if the account already exists
+        # Preserve color and type if the account already exists.
         existing = await db.get(AccountModel, account_id)
         color = existing.color if existing else _pick_color(idx)
         acct_type = existing.type if existing else "checking"
@@ -177,69 +201,104 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
         accounts_updated += 1
 
         for sf_txn in sf_acct.get("transactions", []):
-            amount_raw = Decimal(sf_txn.get("amount", "0"))
+            pending_txns.append((sf_txn, account_id))
+
+    # ── Transfer detection ────────────────────────────────────────────────────
+    # Build minimal RawTransaction objects and run the two-pass matcher.
+    raw_for_detection = [
+        RawTransaction(
+            id=sf_txn["id"],
+            account_id=account_id,
+            signed_amount=Decimal(sf_txn.get("amount", "0")),
+            date=datetime.fromtimestamp(sf_txn["posted"], tz=timezone.utc),
+        )
+        for sf_txn, account_id in pending_txns
+    ]
+    transfer_ids = detect_transfers(raw_for_detection)
+
+    # ── Pass 2: Upsert transactions with correct types ────────────────────────
+    transactions_added = 0
+    new_transactions: List[NewTransaction] = []
+
+    for sf_txn, account_id in pending_txns:
+        amount_raw = Decimal(sf_txn.get("amount", "0"))
+        incoming_amount = abs(amount_raw)
+        txn_id = sf_txn["id"]
+        raw_description = sf_txn.get("description", "Unknown")
+        extra = sf_txn.get("extra") or {}
+        provider_category = (
+            sf_txn.get("category")
+            or extra.get("category")
+            or extra.get("simplefin_category")
+        )
+
+        # Determine transaction type — priority order:
+        #   1. Two-pass matched pair (highest confidence: both legs are present).
+        #   2. Provider category signals transfer (fallback for external/one-sided
+        #      transfers where the counterpart account isn't in SimpleFIN).
+        #   3. Sign-based income/expense (standard classification).
+        if txn_id in transfer_ids:
+            txn_type = "transfer"
+        elif _provider_signals_transfer(provider_category):
+            txn_type = "transfer"
+        else:
             txn_type = "income" if amount_raw >= 0 else "expense"
-            raw_description = sf_txn.get("description", "Unknown")
-            extra = sf_txn.get("extra") or {}
-            provider_category = (
-                sf_txn.get("category")
-                or extra.get("category")
-                or extra.get("simplefin_category")
-            )
 
-            # Map provider category string → category_id (preserving raw in provider_category)
-            category_id = _map_provider_category(provider_category, name_to_id, uncategorized_id)
+        # Transfers always land in the Transfer category; everything else goes
+        # through the normal provider-category mapping.
+        category_id = (
+            transfer_category_id
+            if txn_type == "transfer"
+            else _map_provider_category(provider_category, name_to_id, uncategorized_id)
+        )
 
-            txn_id = sf_txn["id"]
-            incoming_amount = abs(amount_raw)
-            existing_txn = await db.get(TransactionModel, txn_id)
-            is_new = existing_txn is None
+        existing_txn = await db.get(TransactionModel, txn_id)
+        is_new = existing_txn is None
 
-            # Split-parent amount-drift check (pending → posted edge case).
-            # If SimpleFIN changes the amount of a transaction that the user already
-            # split, the split math is now invalid.  We update the parent amount and
-            # flag it for user review so the client can prompt a re-reconcile.
-            if (
-                existing_txn is not None
-                and existing_txn.is_split_parent
-                and existing_txn.amount != incoming_amount
-            ):
-                existing_txn.amount = incoming_amount
-                existing_txn.requires_user_review = True
-                existing_txn.pending = sf_txn.get("pending", False)
-                db.add(existing_txn)
-                # Skip the full merge below — we've handled this row already.
-                continue
+        # Split-parent amount-drift check (pending → posted edge case).
+        # If SimpleFIN changes the amount of a transaction the user already split,
+        # the split math is invalid. Update the parent and flag for user review.
+        if (
+            existing_txn is not None
+            and existing_txn.is_split_parent
+            and existing_txn.amount != incoming_amount
+        ):
+            existing_txn.amount = incoming_amount
+            existing_txn.requires_user_review = True
+            existing_txn.pending = sf_txn.get("pending", False)
+            db.add(existing_txn)
+            # Skip the full merge — this row is handled.
+            continue
 
-            await db.merge(TransactionModel(
-                id=txn_id,
-                title=raw_description,
-                original_description=raw_description,
-                merchant_name=sf_txn.get("payee") or sf_txn.get("merchant_name"),
-                provider_transaction_id=txn_id,
-                amount=incoming_amount,
-                type=txn_type,
-                category_id=category_id,
-                provider_category=provider_category,
-                date=datetime.fromtimestamp(sf_txn["posted"], tz=timezone.utc),
-                pending=sf_txn.get("pending", False),
-                account_id=account_id,
-                subscription_id=None,
-                notes=None,
-                is_split_parent=False,
-                parent_transaction_id=None,
-                requires_user_review=False,
-            ))
+        await db.merge(TransactionModel(
+            id=txn_id,
+            title=raw_description,
+            original_description=raw_description,
+            merchant_name=sf_txn.get("payee") or sf_txn.get("merchant_name"),
+            provider_transaction_id=txn_id,
+            amount=incoming_amount,
+            type=txn_type,
+            category_id=category_id,
+            provider_category=provider_category,
+            date=datetime.fromtimestamp(sf_txn["posted"], tz=timezone.utc),
+            pending=sf_txn.get("pending", False),
+            account_id=account_id,
+            subscription_id=None,
+            notes=None,
+            is_split_parent=False,
+            parent_transaction_id=None,
+            requires_user_review=False,
+        ))
 
-            if is_new:
-                transactions_added += 1
-                if txn_type == "expense":
-                    new_transactions.append(NewTransaction(
-                        id=txn_id,
-                        title=raw_description,
-                        amount=incoming_amount,
-                        account_name=account_names.get(account_id),
-                    ))
+        if is_new:
+            transactions_added += 1
+            if txn_type == "expense":
+                new_transactions.append(NewTransaction(
+                    id=txn_id,
+                    title=raw_description,
+                    amount=incoming_amount,
+                    account_name=account_names.get(account_id),
+                ))
 
     await db.commit()
 

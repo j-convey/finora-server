@@ -134,6 +134,9 @@ async def update_transaction(
     if "notes" in updates:
         txn.notes = updates["notes"]
 
+    if "type" in updates and updates["type"] is not None:
+        txn.type = updates["type"]
+
     await db.commit()
     await db.refresh(txn)
     await db.refresh(txn, attribute_names=['category_rel'])

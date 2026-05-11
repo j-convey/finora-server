@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -36,6 +36,7 @@ class TransactionUpdate(BaseModel):
     """
 
     title: Optional[str] = None
+    type: Optional[Literal["income", "expense", "transfer"]] = None
     category: Optional[str] = None
     subscription_id: Optional[str] = None
     notes: Optional[str] = None
