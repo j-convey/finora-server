@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any, Dict, List
 from pydantic import BaseModel
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_admin_user
 from app.core.database import get_db
 from app.models.account import Account as AccountModel
 from app.models.transaction import Transaction as TransactionModel
@@ -78,10 +78,12 @@ async def _export_row_dicts(db: AsyncSession, model_cls, order_by=None) -> List[
 @router.post("/admin/reset-database")
 async def reset_database(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     **CAUTION: This endpoint deletes ALL data from the database.**
+    
+    **Requires admin role.**
 
     Clears all records from the following tables:
     - account_snapshots
@@ -93,7 +95,6 @@ async def reset_database(
     - simplefin_config
 
     This is useful for resetting to a clean state during development/testing.
-    In production, this should be protected behind authentication/authorization.
 
     **Response:**
     - `200 OK` with summary of deleted records
@@ -156,7 +157,7 @@ async def reset_database(
 @router.get("/admin/export-database", response_model=DatabaseExport)
 async def export_database(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Export the entire database as JSON.
@@ -219,10 +220,12 @@ async def export_database(
 async def import_database(
     payload: DatabaseImport,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ):
     """
     Import a previously exported database state.
+    
+    **Requires admin role.**
 
     **CAUTION:** This will:
     1. Delete all existing data

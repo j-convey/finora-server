@@ -90,3 +90,18 @@ async def get_current_user(
     if user is None or not user.is_active:
         raise credentials_exception
     return user
+
+
+async def get_admin_user(
+    user: User = Depends(get_current_user),
+) -> User:
+    """FastAPI dependency — verify the current user is an admin.
+
+    Raises HTTP 403 if the user is not an admin.
+    """
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return user
