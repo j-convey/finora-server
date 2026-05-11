@@ -155,8 +155,9 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
       Detection — detect_transfers() matches credit/debit pairs across different
                   accounts with equal amounts and dates within 3 days.
       Pass 2 — Upsert all transactions, assigning type="transfer" to matched
-                pairs (and to any transaction whose provider category signals a
-                transfer), rather than the naive sign-based income/expense split.
+                pairs, to any transaction whose provider category signals a
+                transfer, and to any positive transaction on a credit_card
+                account (which is definitionally a payment, never income).
     """
     data = await fetch_simplefin_data(access_url)
     sf_accounts = data.get("accounts", [])
@@ -164,13 +165,14 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
     # Load category lookup once for the entire sync.
     name_to_id, uncategorized_id = await _load_category_map(db)
     transfer_category_id = name_to_id.get("transfer", uncategorized_id)
+    cc_payment_category_id = name_to_id.get("credit card payment", transfer_category_id)
 
     institutions: List[str] = []
     accounts_updated = 0
     account_names: dict[str, str] = {}
 
-    # Each entry is (sf_txn dict, account_id).  Populated in Pass 1, consumed in Pass 2.
-    pending_txns: List[tuple[dict, str]] = []
+    # Each entry is (sf_txn dict, account_id, acct_type).  Populated in Pass 1, consumed in Pass 2.
+    pending_txns: List[tuple[dict, str, str]] = []
 
     # ── Pass 1: Upsert accounts, collect raw transaction data ─────────────────
     for idx, sf_acct in enumerate(sf_accounts):
@@ -201,7 +203,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
         accounts_updated += 1
 
         for sf_txn in sf_acct.get("transactions", []):
-            pending_txns.append((sf_txn, account_id))
+            pending_txns.append((sf_txn, account_id, acct_type))
 
     # ── Transfer detection ────────────────────────────────────────────────────
     # Build minimal RawTransaction objects and run the two-pass matcher.
@@ -212,7 +214,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
             signed_amount=Decimal(sf_txn.get("amount", "0")),
             date=datetime.fromtimestamp(sf_txn["posted"], tz=timezone.utc),
         )
-        for sf_txn, account_id in pending_txns
+        for sf_txn, account_id, acct_type in pending_txns
     ]
     transfer_ids = detect_transfers(raw_for_detection)
 
@@ -220,7 +222,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
     transactions_added = 0
     new_transactions: List[NewTransaction] = []
 
-    for sf_txn, account_id in pending_txns:
+    for sf_txn, account_id, acct_type in pending_txns:
         amount_raw = Decimal(sf_txn.get("amount", "0"))
         incoming_amount = abs(amount_raw)
         txn_id = sf_txn["id"]
@@ -236,21 +238,31 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
         #   1. Two-pass matched pair (highest confidence: both legs are present).
         #   2. Provider category signals transfer (fallback for external/one-sided
         #      transfers where the counterpart account isn't in SimpleFIN).
-        #   3. Sign-based income/expense (standard classification).
+        #   3. Credit card account + positive amount: a payment reducing debt is
+        #      never income — always a transfer. This covers the case where the
+        #      checking side isn't synced through SimpleFIN.
+        #   4. Sign-based income/expense (standard classification).
+        is_credit_card_account = acct_type == "credit_card"
         if txn_id in transfer_ids:
             txn_type = "transfer"
         elif _provider_signals_transfer(provider_category):
             txn_type = "transfer"
+        elif is_credit_card_account and amount_raw > 0:
+            txn_type = "transfer"
         else:
             txn_type = "income" if amount_raw >= 0 else "expense"
 
-        # Transfers always land in the Transfer category; everything else goes
-        # through the normal provider-category mapping.
-        category_id = (
-            transfer_category_id
-            if txn_type == "transfer"
-            else _map_provider_category(provider_category, name_to_id, uncategorized_id)
-        )
+        # Assign category based on type and account context.
+        # Credit card payments get their own distinct category so they can be
+        # displayed differently from generic account-to-account transfers.
+        if txn_type == "transfer":
+            category_id = (
+                cc_payment_category_id
+                if is_credit_card_account and amount_raw > 0
+                else transfer_category_id
+            )
+        else:
+            category_id = _map_provider_category(provider_category, name_to_id, uncategorized_id)
 
         existing_txn = await db.get(TransactionModel, txn_id)
         is_new = existing_txn is None
