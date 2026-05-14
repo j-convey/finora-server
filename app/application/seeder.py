@@ -12,12 +12,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
-from app.models.budget import Budget as BudgetModel
-from app.models.category import Category as CategoryModel
-from app.models.account_snapshot import AccountSnapshot as AccountSnapshotModel
-from app.models.account import Account as AccountModel
-from app.models.transaction import Transaction as TransactionModel
-from app.models.subscription import Subscription as SubscriptionModel
+from app.core.logging import get_logger
+from app.infrastructure.models.budget import Budget as BudgetModel
+from app.infrastructure.models.category import Category as CategoryModel
+from app.infrastructure.models.account_snapshot import AccountSnapshot as AccountSnapshotModel
+from app.infrastructure.models.account import Account as AccountModel
+from app.infrastructure.models.transaction import Transaction as TransactionModel
+from app.infrastructure.models.subscription import Subscription as SubscriptionModel
+
+logger = get_logger(__name__)
 
 _DEFAULT_CATEGORIES = [
     # Income
@@ -135,7 +138,7 @@ async def seed_categories() -> None:
 
         if added:
             await db.commit()
-            print(f"✅ Seeded {added} default categories.")
+            logger.info("seeded default categories", count=added)
 
 
 async def _load_category_name_to_id(db) -> dict[str, int]:
@@ -160,7 +163,7 @@ async def seed_budgets() -> None:
         for row in _DEFAULT_BUDGETS:
             category_id = cat_map.get(row["category_name"].lower())
             if category_id is None:
-                print(f"⚠️  Budget skipped — unknown category: {row['category_name']!r}")
+                logger.warning("budget skipped — unknown category", category_name=row["category_name"])
                 continue
             db.add(BudgetModel(
                 id=row["id"],
@@ -171,7 +174,7 @@ async def seed_budgets() -> None:
             ))
 
         await db.commit()
-        print(f"✅ Seeded {len(_DEFAULT_BUDGETS)} default budgets.")
+        logger.info("seeded default budgets", count=len(_DEFAULT_BUDGETS))
 
 
 async def seed_accounts() -> None:
@@ -218,7 +221,7 @@ async def seed_accounts() -> None:
             db.add(AccountModel(**acc))
 
         await db.commit()
-        print(f"✅ Seeded {len(accounts)} demo accounts.")
+        logger.info("seeded demo accounts", count=len(accounts))
 
 
 async def seed_subscriptions() -> None:
@@ -364,7 +367,7 @@ async def seed_subscriptions() -> None:
             db.add(SubscriptionModel(**sub))
 
         await db.commit()
-        print(f"✅ Seeded {len(subscriptions)} demo subscriptions.")
+        logger.info("seeded demo subscriptions", count=len(subscriptions))
 
 
 async def seed_transactions() -> None:
@@ -395,7 +398,7 @@ async def seed_transactions() -> None:
         csv_path = os.path.join(os.path.dirname(__file__), "../data/transactions.csv")
 
         if not os.path.exists(csv_path):
-            print(f"⚠️  Transaction CSV not found at {csv_path}")
+            logger.warning("transaction CSV not found", csv_path=csv_path)
             return
 
         today = date.today()
@@ -442,9 +445,9 @@ async def seed_transactions() -> None:
                 db.add(txn)
 
             await db.commit()
-            print(f"✅ Seeded {len(transactions)} transactions from CSV.")
-        except Exception as exc:
-            print(f"❌ Failed to load transactions from CSV: {exc}")
+            logger.info("seeded transactions from CSV", count=len(transactions))
+        except Exception:
+            logger.exception("failed to load transactions from CSV")
             raise
 
 
@@ -507,4 +510,4 @@ async def seed_account_snapshots() -> None:
             db.add(snapshot)
 
         await db.commit()
-        print(f"✅ Seeded 181 account snapshots for 6-month net worth history.")
+        logger.info("seeded account snapshots", count=181)

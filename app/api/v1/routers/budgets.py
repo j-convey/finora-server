@@ -4,9 +4,9 @@ from typing import List
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.user import User
-from app.schemas.budget import Budget, BudgetCreate, BudgetUpdate
-from app.services import budget as budget_service
+from app.infrastructure.models.user import User
+from app.api.v1.schemas.budget import Budget, BudgetCreate, BudgetUpdate
+from app.application import budget as budget_service
 
 router = APIRouter()
 

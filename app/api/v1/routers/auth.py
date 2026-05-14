@@ -59,10 +59,10 @@ from app.core.auth import (
     create_refresh_token,
 )
 from app.core.database import get_db
-from app.models.household import Household
-from app.models.refresh_token import RefreshToken
-from app.models.user import User
-from app.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
+from app.infrastructure.models.household import Household
+from app.infrastructure.models.refresh_token import RefreshToken
+from app.infrastructure.models.user import User
+from app.api.v1.schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

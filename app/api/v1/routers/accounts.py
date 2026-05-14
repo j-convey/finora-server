@@ -1,18 +1,17 @@
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from datetime import date
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.account import Account as AccountModel
-from app.models.user import User
-from app.schemas.account import Account
-from app.schemas.account_snapshot import NetWorthHistoryEntry
-from app.services.net_worth import get_net_worth_history, create_snapshot
+from app.infrastructure.models.user import User
+from app.infrastructure.repositories.account_repository import AccountRepository
+from app.api.v1.schemas.account import Account
+from app.api.v1.schemas.account_snapshot import NetWorthHistoryEntry
+from app.application.net_worth import get_net_worth_history, create_snapshot
 
 
 _VALID_ACCOUNT_TYPES = {"checking", "savings", "credit_card", "investment", "cash"}
@@ -37,8 +36,8 @@ async def get_accounts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(AccountModel).order_by(AccountModel.name))
-    rows = result.scalars().all()
+    repo = AccountRepository(db)
+    rows = await repo.list_all()
     return [
         Account(
             id=r.id, name=r.name, type=r.type, balance=r.balance,
@@ -108,7 +107,7 @@ async def update_account_type(
             detail=f"Invalid type '{body.type}'. Must be one of: {', '.join(sorted(_VALID_ACCOUNT_TYPES))}",
         )
 
-    account = await db.get(AccountModel, account_id)
+    account = await AccountRepository(db).get_by_id(account_id)
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
 

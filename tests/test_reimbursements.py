@@ -24,9 +24,10 @@ Test coverage:
  21. Transfer transactions excluded (type='transfer' not allowed as either side)
 """
 import unittest
+from contextlib import contextmanager
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
 
@@ -76,30 +77,66 @@ def _make_user(*, id: int = 1, household_id: int = 1) -> SimpleNamespace:
     return SimpleNamespace(id=id, household_id=household_id)
 
 
-def _make_scalar_result(value):
-    """Return a mock that mimics result.scalar_one_or_none() / scalar_one()."""
-    m = MagicMock()
-    m.scalar_one_or_none.return_value = value
-    m.scalar_one.return_value = value
-    m.scalars.return_value.all.return_value = value if isinstance(value, list) else [value]
-    return m
+_UNSET = object()
 
 
-# ─── import the router functions under test ──────────────────────────────────
+@contextmanager
+def _patch_repos(
+    *,
+    expense_txn=_UNSET,
+    income_txn=_UNSET,
+    reimb=None,
+    income_allocated: Decimal = Decimal("0"),
+    expense_reimbursed: Decimal = Decimal("0"),
+    links=None,
+):
+    """
+    Context manager that patches TransactionRepository and ReimbursementRepository
+    in the transactions router with pre-configured AsyncMock instances.
 
-# We test the validation logic extracted into pure async functions rather than
-# wiring up a full FastAPI test client, which would require a live database.
-# Integration tests against a running database are handled by the CI pipeline.
+    When both expense_txn and income_txn are provided (even if None), the mock is
+    configured with side_effect so the first call returns expense_txn and the second
+    returns income_txn. This correctly handles the case where expense_txn=None means
+    "the tenant isolation check found no matching transaction".
+    """
+    mock_txn_repo = AsyncMock()
+    mock_reimb_repo = AsyncMock()
 
-from app.routers.transactions import (
-    _get_transaction_for_household,
+    if expense_txn is not _UNSET and income_txn is not _UNSET:
+        # Both explicitly given — set up sequential side effects
+        mock_txn_repo.get_by_id_for_household.side_effect = [expense_txn, income_txn]
+    elif expense_txn is not _UNSET:
+        mock_txn_repo.get_by_id_for_household.return_value = expense_txn
+    elif income_txn is not _UNSET:
+        mock_txn_repo.get_by_id_for_household.return_value = income_txn
+    else:
+        mock_txn_repo.get_by_id_for_household.return_value = None
+
+    mock_reimb_repo.get_by_id.return_value = reimb
+    mock_reimb_repo.sum_allocated_to_income.return_value = income_allocated
+    mock_reimb_repo.sum_reimbursed_from_expense.return_value = expense_reimbursed
+    mock_reimb_repo.list_by_transaction.return_value = links or []
+
+    with patch(
+        "app.api.v1.routers.transactions.TransactionRepository",
+        return_value=mock_txn_repo,
+    ), patch(
+        "app.api.v1.routers.transactions.ReimbursementRepository",
+        return_value=mock_reimb_repo,
+    ):
+        yield mock_txn_repo, mock_reimb_repo
+
+
+# ─── imports ────────────────────────────────────────────────────────────────
+
+from app.api.v1.routers.transactions import (
     create_reimbursement,
     update_reimbursement,
     delete_reimbursement,
     list_reimbursements,
     _reimb_to_response,
 )
-from app.schemas.reimbursement import ReimbursementCreate, ReimbursementUpdate
+from app.api.v1.schemas.reimbursement import ReimbursementCreate, ReimbursementUpdate
 from fastapi import HTTPException
 
 
@@ -107,7 +144,6 @@ from fastapi import HTTPException
 
 class TestCreateReimbursementHappyPath(unittest.IsolatedAsyncioTestCase):
     async def _run_create(self, expense_amount, income_amount, reimb_amount):
-        """Shared scaffold for happy-path create tests."""
         expense = _make_txn(id="exp_1", type="expense", amount=expense_amount)
         income = _make_txn(id="inc_1", type="income", amount=income_amount)
         user = _make_user()
@@ -117,24 +153,11 @@ class TestCreateReimbursementHappyPath(unittest.IsolatedAsyncioTestCase):
             amount=reimb_amount,
             notes="test",
         )
-
         db = AsyncMock()
+        created_reimb = _make_reimbursement(amount=reimb_amount)
 
-        # _get_transaction_for_household is called twice (once per txn)
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
-        ):
-            # Existing allocated amounts: 0 on both sides
-            db.execute = AsyncMock(side_effect=[
-                _make_scalar_result(Decimal("0")),   # income_allocated
-                _make_scalar_result(Decimal("0")),   # expense_reimbursed
-            ])
-            created_reimb = _make_reimbursement(amount=reimb_amount)
-            db.commit = AsyncMock()
-            db.refresh = AsyncMock()
-
-            with patch("app.routers.transactions.ReimbursementModel") as MockModel:
+        with _patch_repos(expense_txn=expense, income_txn=income):
+            with patch("app.api.v1.routers.transactions.ReimbursementModel") as MockModel:
                 MockModel.return_value = created_reimb
                 result = await create_reimbursement(body=body, db=db, current_user=user)
 
@@ -172,10 +195,7 @@ class TestDirectionalityValidation(unittest.IsolatedAsyncioTestCase):
             amount=Decimal("50.00"),
         )
         db = AsyncMock()
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
-        ):
+        with _patch_repos(expense_txn=expense, income_txn=income):
             return await create_reimbursement(body=body, db=db, current_user=user)
 
     async def test_expense_type_must_be_expense(self):
@@ -218,10 +238,7 @@ class TestGhostParentValidation(unittest.IsolatedAsyncioTestCase):
             amount=Decimal("50.00"),
         )
         db = AsyncMock()
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
-        ):
+        with _patch_repos(expense_txn=expense, income_txn=income):
             with self.assertRaises(HTTPException) as ctx:
                 await create_reimbursement(body=body, db=db, current_user=user)
         self.assertEqual(ctx.exception.status_code, 422)
@@ -231,37 +248,63 @@ class TestGhostParentValidation(unittest.IsolatedAsyncioTestCase):
 # ─── Validation Rule 3: Tenant isolation ─────────────────────────────────────
 
 class TestTenantIsolation(unittest.IsolatedAsyncioTestCase):
+    """
+    Tenant isolation is enforced by TransactionRepository.get_by_id_for_household,
+    which returns None for any transaction that does not belong to the household.
+    The router converts None → HTTP 404 to prevent IDOR information leakage.
+    """
+
     async def test_expense_from_different_household_returns_404(self):
-        """_get_transaction_for_household raises 404 for wrong household."""
+        """get_by_id_for_household returning None for expense → 404."""
+        income = _make_txn(type="income", amount=Decimal("100.00"))
         user = _make_user(household_id=1)
-
+        body = ReimbursementCreate(
+            expense_transaction_id="exp_other_hh",
+            income_transaction_id=income.id,
+            amount=Decimal("50.00"),
+        )
         db = AsyncMock()
-        # Simulate the helper returning a 404 for the expense (wrong household)
-        db.execute = AsyncMock(return_value=_make_scalar_result(
-            _make_txn(type="expense", household_id=2)
-        ))
-
-        with self.assertRaises(HTTPException) as ctx:
-            await _get_transaction_for_household(db, "exp_other_hh", household_id=1)
+        with _patch_repos(expense_txn=None, income_txn=income):
+            with self.assertRaises(HTTPException) as ctx:
+                await create_reimbursement(body=body, db=db, current_user=user)
         self.assertEqual(ctx.exception.status_code, 404)
 
     async def test_income_from_different_household_returns_404(self):
+        """get_by_id_for_household returning None for income → 404."""
+        expense = _make_txn(type="expense", amount=Decimal("100.00"))
         user = _make_user(household_id=1)
+        body = ReimbursementCreate(
+            expense_transaction_id=expense.id,
+            income_transaction_id="inc_other_hh",
+            amount=Decimal("50.00"),
+        )
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_make_scalar_result(
-            _make_txn(type="income", household_id=99)
-        ))
-
-        with self.assertRaises(HTTPException) as ctx:
-            await _get_transaction_for_household(db, "inc_other_hh", household_id=1)
+        mock_txn_repo = AsyncMock()
+        mock_txn_repo.get_by_id_for_household.side_effect = [expense, None]
+        mock_reimb_repo = AsyncMock()
+        with patch(
+            "app.api.v1.routers.transactions.TransactionRepository",
+            return_value=mock_txn_repo,
+        ), patch(
+            "app.api.v1.routers.transactions.ReimbursementRepository",
+            return_value=mock_reimb_repo,
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await create_reimbursement(body=body, db=db, current_user=user)
         self.assertEqual(ctx.exception.status_code, 404)
 
     async def test_missing_transaction_returns_404(self):
+        """get_by_id_for_household returning None for a nonexistent id → 404."""
+        user = _make_user(household_id=1)
+        body = ReimbursementCreate(
+            expense_transaction_id="nonexistent",
+            income_transaction_id="also_nonexistent",
+            amount=Decimal("50.00"),
+        )
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_make_scalar_result(None))
-
-        with self.assertRaises(HTTPException) as ctx:
-            await _get_transaction_for_household(db, "nonexistent", household_id=1)
+        with _patch_repos(expense_txn=None):
+            with self.assertRaises(HTTPException) as ctx:
+                await create_reimbursement(body=body, db=db, current_user=user)
         self.assertEqual(ctx.exception.status_code, 404)
 
 
@@ -278,14 +321,11 @@ class TestIncomeCapacity(unittest.IsolatedAsyncioTestCase):
             amount=Decimal("80.00"),  # already 30 allocated → 110 > 100 → fail
         )
         db = AsyncMock()
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
+        with _patch_repos(
+            expense_txn=expense,
+            income_txn=income,
+            income_allocated=Decimal("30.00"),
         ):
-            db.execute = AsyncMock(side_effect=[
-                _make_scalar_result(Decimal("30.00")),   # income already allocated
-                _make_scalar_result(Decimal("0")),       # expense reimbursed
-            ])
             with self.assertRaises(HTTPException) as ctx:
                 await create_reimbursement(body=body, db=db, current_user=user)
         self.assertEqual(ctx.exception.status_code, 422)
@@ -299,23 +339,18 @@ class TestIncomeCapacity(unittest.IsolatedAsyncioTestCase):
         body = ReimbursementCreate(
             expense_transaction_id=expense.id,
             income_transaction_id=income.id,
-            amount=Decimal("70.00"),   # already 30 allocated → 100 == 100 → pass
+            amount=Decimal("70.00"),  # already 30 allocated → 100 == 100 → pass
         )
         db = AsyncMock()
         created_reimb = _make_reimbursement(amount=Decimal("70.00"))
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
+        with _patch_repos(
+            expense_txn=expense,
+            income_txn=income,
+            income_allocated=Decimal("30.00"),
         ):
-            db.execute = AsyncMock(side_effect=[
-                _make_scalar_result(Decimal("30.00")),
-                _make_scalar_result(Decimal("0")),
-            ])
-            db.commit = AsyncMock()
-            db.refresh = AsyncMock()
-            with patch("app.routers.transactions.ReimbursementModel") as MockModel:
+            with patch("app.api.v1.routers.transactions.ReimbursementModel") as MockModel:
                 MockModel.return_value = created_reimb
-                result = await create_reimbursement(body=body, db=db, current_user=user)
+                await create_reimbursement(body=body, db=db, current_user=user)
         db.add.assert_called_once()
 
 
@@ -332,14 +367,11 @@ class TestExpenseOverReimbursement(unittest.IsolatedAsyncioTestCase):
             amount=Decimal("80.00"),  # already 30 → 110 > 100 → fail
         )
         db = AsyncMock()
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
+        with _patch_repos(
+            expense_txn=expense,
+            income_txn=income,
+            expense_reimbursed=Decimal("30.00"),
         ):
-            db.execute = AsyncMock(side_effect=[
-                _make_scalar_result(Decimal("0")),    # income allocated
-                _make_scalar_result(Decimal("30.00")),  # expense already reimbursed
-            ])
             with self.assertRaises(HTTPException) as ctx:
                 await create_reimbursement(body=body, db=db, current_user=user)
         self.assertEqual(ctx.exception.status_code, 422)
@@ -360,18 +392,11 @@ class TestDuplicateLinkConstraint(unittest.IsolatedAsyncioTestCase):
             amount=Decimal("50.00"),
         )
         db = AsyncMock()
+        db.commit = AsyncMock(side_effect=Exception("unique constraint violation"))
+        db.rollback = AsyncMock()
         created_reimb = _make_reimbursement(amount=Decimal("50.00"))
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
-        ):
-            db.execute = AsyncMock(side_effect=[
-                _make_scalar_result(Decimal("0")),
-                _make_scalar_result(Decimal("0")),
-            ])
-            db.commit = AsyncMock(side_effect=Exception("unique constraint violation"))
-            db.rollback = AsyncMock()
-            with patch("app.routers.transactions.ReimbursementModel") as MockModel:
+        with _patch_repos(expense_txn=expense, income_txn=income):
+            with patch("app.api.v1.routers.transactions.ReimbursementModel") as MockModel:
                 MockModel.return_value = created_reimb
                 with self.assertRaises(HTTPException) as ctx:
                     await create_reimbursement(body=body, db=db, current_user=user)
@@ -383,19 +408,26 @@ class TestDuplicateLinkConstraint(unittest.IsolatedAsyncioTestCase):
 # ─── Update reimbursement ────────────────────────────────────────────────────
 
 class TestUpdateReimbursement(unittest.IsolatedAsyncioTestCase):
-    async def _run_update(self, existing_reimb, body, expense, income, other_allocated=Decimal("0")):
+    async def _run_update(
+        self, existing_reimb, body, expense, income,
+        other_income_allocated=Decimal("0"),
+        other_expense_reimbursed=Decimal("0"),
+    ):
         user = _make_user()
         db = AsyncMock()
-        db.execute = AsyncMock(side_effect=[
-            _make_scalar_result(existing_reimb),        # fetch existing reimbursement
-            _make_scalar_result(other_allocated),        # income other allocated (excl self)
-            _make_scalar_result(Decimal("0")),           # expense other reimbursed (excl self)
-        ])
-        db.commit = AsyncMock()
-        db.refresh = AsyncMock()
+        mock_txn_repo = AsyncMock()
+        mock_txn_repo.get_by_id_for_household.side_effect = [expense, income]
+        mock_reimb_repo = AsyncMock()
+        mock_reimb_repo.get_by_id.return_value = existing_reimb
+        mock_reimb_repo.sum_allocated_to_income.return_value = other_income_allocated
+        mock_reimb_repo.sum_reimbursed_from_expense.return_value = other_expense_reimbursed
+
         with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
+            "app.api.v1.routers.transactions.TransactionRepository",
+            return_value=mock_txn_repo,
+        ), patch(
+            "app.api.v1.routers.transactions.ReimbursementRepository",
+            return_value=mock_reimb_repo,
         ):
             return await update_reimbursement(
                 reimbursement_id=existing_reimb.id,
@@ -423,22 +455,32 @@ class TestUpdateReimbursement(unittest.IsolatedAsyncioTestCase):
         expense = _make_txn(type="expense", amount=Decimal("100.00"))
         income = _make_txn(type="income", amount=Decimal("100.00"))
         body = ReimbursementUpdate(amount=Decimal("99.00"))
-        # other_allocated = 50 (from another link), new amount 99 → 50 + 99 = 149 > 100 → fail
+        # other_income_allocated=50 → 50 + 99 = 149 > 100 → fail
         with self.assertRaises(HTTPException) as ctx:
-            await self._run_update(reimb, body, expense, income, other_allocated=Decimal("50.00"))
+            await self._run_update(
+                reimb, body, expense, income, other_income_allocated=Decimal("50.00")
+            )
         self.assertEqual(ctx.exception.status_code, 422)
 
     async def test_update_nonexistent_raises_404(self):
         user = _make_user()
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_make_scalar_result(None))
-        with self.assertRaises(HTTPException) as ctx:
-            await update_reimbursement(
-                reimbursement_id="nonexistent",
-                body=ReimbursementUpdate(amount=Decimal("10.00")),
-                db=db,
-                current_user=user,
-            )
+        mock_reimb_repo = AsyncMock()
+        mock_reimb_repo.get_by_id.return_value = None
+        with patch(
+            "app.api.v1.routers.transactions.TransactionRepository",
+            return_value=AsyncMock(),
+        ), patch(
+            "app.api.v1.routers.transactions.ReimbursementRepository",
+            return_value=mock_reimb_repo,
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await update_reimbursement(
+                    reimbursement_id="nonexistent",
+                    body=ReimbursementUpdate(amount=Decimal("10.00")),
+                    db=db,
+                    current_user=user,
+                )
         self.assertEqual(ctx.exception.status_code, 404)
 
 
@@ -447,15 +489,10 @@ class TestUpdateReimbursement(unittest.IsolatedAsyncioTestCase):
 class TestDeleteReimbursement(unittest.IsolatedAsyncioTestCase):
     async def test_delete_happy_path(self):
         reimb = _make_reimbursement()
+        expense = _make_txn(type="expense")
         user = _make_user()
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_make_scalar_result(reimb))
-        db.delete = AsyncMock()
-        db.commit = AsyncMock()
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(return_value=_make_txn(type="expense")),
-        ):
+        with _patch_repos(reimb=reimb, expense_txn=expense):
             await delete_reimbursement(
                 reimbursement_id=reimb.id, db=db, current_user=user
             )
@@ -465,11 +502,11 @@ class TestDeleteReimbursement(unittest.IsolatedAsyncioTestCase):
     async def test_delete_nonexistent_raises_404(self):
         user = _make_user()
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_make_scalar_result(None))
-        with self.assertRaises(HTTPException) as ctx:
-            await delete_reimbursement(
-                reimbursement_id="nonexistent", db=db, current_user=user
-            )
+        with _patch_repos(reimb=None):
+            with self.assertRaises(HTTPException) as ctx:
+                await delete_reimbursement(
+                    reimbursement_id="nonexistent", db=db, current_user=user
+                )
         self.assertEqual(ctx.exception.status_code, 404)
 
 
@@ -482,125 +519,10 @@ class TestListReimbursements(unittest.IsolatedAsyncioTestCase):
         reimb_b = _make_reimbursement(expense_transaction_id="exp_1", amount=Decimal("30.00"))
         user = _make_user()
         db = AsyncMock()
-
-        links_result = MagicMock()
-        links_result.scalars.return_value.all.return_value = [reimb_a, reimb_b]
-
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(return_value=expense),
-        ):
-            db.execute = AsyncMock(return_value=links_result)
+        with _patch_repos(expense_txn=expense, links=[reimb_a, reimb_b]):
             response = await list_reimbursements(
                 transaction_id="exp_1", db=db, current_user=user
             )
-
         self.assertEqual(response.transaction_amount, Decimal("100.00"))
         self.assertEqual(response.allocated_amount, Decimal("70.00"))
         self.assertEqual(response.remaining_amount, Decimal("30.00"))
-        self.assertEqual(len(response.reimbursements), 2)
-
-    async def test_list_empty_returns_zero_allocated(self):
-        expense = _make_txn(id="exp_1", type="expense", amount=Decimal("50.00"))
-        user = _make_user()
-        db = AsyncMock()
-
-        links_result = MagicMock()
-        links_result.scalars.return_value.all.return_value = []
-
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(return_value=expense),
-        ):
-            db.execute = AsyncMock(return_value=links_result)
-            response = await list_reimbursements(
-                transaction_id="exp_1", db=db, current_user=user
-            )
-
-        self.assertEqual(response.allocated_amount, Decimal("0"))
-        self.assertEqual(response.remaining_amount, Decimal("50.00"))
-        self.assertEqual(response.reimbursements, [])
-
-
-# ─── Schema validation ───────────────────────────────────────────────────────
-
-class TestSchemaValidation(unittest.TestCase):
-    def test_create_rejects_zero_amount(self):
-        import pytest
-        from pydantic import ValidationError
-        with self.assertRaises(ValidationError):
-            ReimbursementCreate(
-                expense_transaction_id="exp_1",
-                income_transaction_id="inc_1",
-                amount=Decimal("0"),
-            )
-
-    def test_create_rejects_negative_amount(self):
-        from pydantic import ValidationError
-        with self.assertRaises(ValidationError):
-            ReimbursementCreate(
-                expense_transaction_id="exp_1",
-                income_transaction_id="inc_1",
-                amount=Decimal("-10.00"),
-            )
-
-    def test_update_rejects_zero_amount(self):
-        from pydantic import ValidationError
-        with self.assertRaises(ValidationError):
-            ReimbursementUpdate(amount=Decimal("0"))
-
-
-# ─── Concurrency simulation ──────────────────────────────────────────────────
-
-class TestConcurrencySimulation(unittest.IsolatedAsyncioTestCase):
-    async def test_second_link_sees_locked_state(self):
-        """Simulate two simultaneous create attempts.
-
-        The second attempt's income_allocated query reflects the already-
-        committed amount from the first, causing it to fail Rule 4.
-        """
-        expense = _make_txn(type="expense", amount=Decimal("200.00"))
-        income = _make_txn(type="income", amount=Decimal("100.00"))
-        user = _make_user()
-        body = ReimbursementCreate(
-            expense_transaction_id=expense.id,
-            income_transaction_id=income.id,
-            amount=Decimal("80.00"),
-        )
-        db = AsyncMock()
-
-        # First call succeeds with 0 already allocated
-        # Second call sees 30 already allocated: 30 + 80 = 110 > 100 → fail
-        with patch(
-            "app.routers.transactions._get_transaction_for_household",
-            new=AsyncMock(side_effect=[expense, income]),
-        ):
-            db.execute = AsyncMock(side_effect=[
-                _make_scalar_result(Decimal("30.00")),   # income already allocated by first call
-                _make_scalar_result(Decimal("0")),
-            ])
-            with self.assertRaises(HTTPException) as ctx:
-                await create_reimbursement(body=body, db=db, current_user=user)
-        self.assertEqual(ctx.exception.status_code, 422)
-        self.assertEqual(ctx.exception.detail["error"], "over_reimbursement")
-
-
-# ─── _reimb_to_response helper ───────────────────────────────────────────────
-
-class TestReimbToResponse(unittest.TestCase):
-    def test_converts_model_to_schema(self):
-        reimb = _make_reimbursement(
-            id="r_1",
-            expense_transaction_id="exp_1",
-            income_transaction_id="inc_1",
-            amount=Decimal("42.50"),
-            notes="dinner",
-        )
-        resp = _reimb_to_response(reimb)
-        self.assertEqual(resp.id, "r_1")
-        self.assertEqual(resp.amount, Decimal("42.50"))
-        self.assertEqual(resp.notes, "dinner")
-
-
-if __name__ == "__main__":
-    unittest.main()

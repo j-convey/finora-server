@@ -8,9 +8,9 @@ from pydantic import BaseModel
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.subscription import SubscriptionStatus, RecurrenceUnit
-from app.models.user import User
-from app.services.subscription import SubscriptionFilters, SubscriptionService
+from app.infrastructure.models.subscription import SubscriptionStatus, RecurrenceUnit
+from app.infrastructure.models.user import User
+from app.application.subscription import SubscriptionFilters, SubscriptionService
 
 router = APIRouter()
 

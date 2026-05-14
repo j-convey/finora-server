@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ENVIRONMENT: str = "development"
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
+    APP_VERSION: str = "0.1.0"
+    GIT_COMMIT: str = "unknown"
 
     model_config = SettingsConfigDict(
         env_file=".env",

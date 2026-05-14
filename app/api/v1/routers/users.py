@@ -20,13 +20,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.user import User
-from app.schemas.user import UserResponse, UserUpdate
+from app.infrastructure.models.user import User
+from app.infrastructure.repositories.user_repository import UserRepository
+from app.api.v1.schemas.user import UserResponse, UserUpdate
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -60,10 +60,8 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
 ):
     """Return all users in the same household as the caller."""
-    result = await db.execute(
-        select(User).where(User.household_id == current_user.household_id)
-    )
-    return [_user_to_response(u) for u in result.scalars().all()]
+    users = await UserRepository(db).list_by_household(current_user.household_id)
+    return [_user_to_response(u) for u in users]
 
 
 # ── Current user ──────────────────────────────────────────────────────────────
@@ -102,8 +100,7 @@ async def update_me(
 ):
     updates = body.model_dump(exclude_unset=True)
     if "email" in updates:
-        conflict = await db.execute(select(User).where(User.email == updates["email"]))
-        conflicting_user = conflict.scalars().first()
+        conflicting_user = await UserRepository(db).get_by_email(updates["email"])
         if conflicting_user and conflicting_user.id != current_user.id:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
     for key, val in updates.items():
@@ -162,8 +159,7 @@ async def get_avatar(user_id: int, db: AsyncSession = Depends(get_db)):
     Serve a user's avatar image. No auth required — the URL path already
     obscures the resource (no guessable IDs beyond integer user IDs).
     """
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalars().first()
+    user = await UserRepository(db).get_by_id(user_id)
     if not user or not user.profile_picture_path:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No avatar set")
     path = Path(user.profile_picture_path)
@@ -190,8 +186,8 @@ async def create_household_member(
     Create a new user in the same household as the caller.
     Both users are equal — no roles or permission hierarchy.
     """
-    existing = await db.execute(select(User).where(User.email == body.email))
-    if existing.scalars().first():
+    existing = await UserRepository(db).get_by_email(body.email)
+    if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     new_user = User(
@@ -218,10 +214,7 @@ async def delete_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="You cannot delete your own account",
         )
-    result = await db.execute(
-        select(User).where(User.id == user_id, User.household_id == current_user.household_id)
-    )
-    target = result.scalars().first()
+    target = await UserRepository(db).get_by_id_for_household(user_id, current_user.household_id)
     if not target:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

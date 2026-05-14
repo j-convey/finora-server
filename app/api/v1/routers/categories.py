@@ -1,13 +1,12 @@
 from typing import List
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.category import Category as CategoryModel
-from app.models.user import User
+from app.infrastructure.models.user import User
+from app.infrastructure.repositories.category_repository import CategoryRepository
 
 router = APIRouter()
 
@@ -22,9 +21,4 @@ async def get_categories(
     Ordered by sort_order then name. Clients use this list as the only valid
     set of categories when creating or updating transactions.
     """
-    result = await db.execute(
-        select(CategoryModel.name).order_by(
-            CategoryModel.sort_order, CategoryModel.name
-        )
-    )
-    return [name for (name,) in result.all()]
+    return await CategoryRepository(db).list_names()

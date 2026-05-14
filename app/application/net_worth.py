@@ -6,12 +6,12 @@ and retrieving historical net worth data.
 """
 from datetime import datetime, date, timedelta
 from decimal import Decimal
-from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.account import Account as AccountModel
-from app.models.account_snapshot import AccountSnapshot as AccountSnapshotModel
-from app.schemas.account_snapshot import NetWorthHistoryEntry
+from app.infrastructure.repositories.account_repository import AccountRepository
+from app.infrastructure.repositories.account_snapshot_repository import AccountSnapshotRepository
+from app.infrastructure.models.account_snapshot import AccountSnapshot as AccountSnapshotModel
+from app.api.v1.schemas.account_snapshot import NetWorthHistoryEntry
 
 
 async def calculate_net_worth(db: AsyncSession, household_id: int) -> tuple[Decimal, Decimal, Decimal]:
@@ -21,8 +21,7 @@ async def calculate_net_worth(db: AsyncSession, household_id: int) -> tuple[Deci
     Returns:
         tuple: (net_worth, total_assets, total_liabilities)
     """
-    result = await db.execute(select(AccountModel))
-    accounts = result.scalars().all()
+    accounts = await AccountRepository(db).list_all()
     
     total_assets = Decimal("0")
     total_liabilities = Decimal("0")
@@ -61,26 +60,16 @@ async def create_snapshot(
     """
     net_worth, total_assets, total_liabilities = await calculate_net_worth(db, household_id)
 
-    # Check if snapshot already exists
-    result = await db.execute(
-        select(AccountSnapshotModel).where(
-            and_(
-                AccountSnapshotModel.household_id == household_id,
-                AccountSnapshotModel.snapshot_date == snapshot_date,
-            )
-        )
-    )
-    existing_snapshot = result.scalars().first()
+    snapshot_repo = AccountSnapshotRepository(db)
+    existing_snapshot = await snapshot_repo.get_by_household_and_date(household_id, snapshot_date)
     
     if existing_snapshot:
-        # Update existing snapshot
         existing_snapshot.net_worth = net_worth
         existing_snapshot.total_assets = total_assets
         existing_snapshot.total_liabilities = total_liabilities
         await db.flush()
         return existing_snapshot
     else:
-        # Create new snapshot
         snapshot = AccountSnapshotModel(
             household_id=household_id,
             snapshot_date=snapshot_date,
@@ -109,7 +98,6 @@ async def get_net_worth_history(
     Returns:
         List of NetWorthHistoryEntry objects sorted by date
     """
-    # Calculate the start date based on period
     today = date.today()
     period_days = {
         "1week": 7,
@@ -119,28 +107,15 @@ async def get_net_worth_history(
         "1year": 365,
     }
     
-    days_back = period_days.get(period, 30)  # Default to 1 month
+    days_back = period_days.get(period, 30)
     start_date = today - timedelta(days=days_back)
+
+    snapshots = await AccountSnapshotRepository(db).get_history(household_id, start_date, today)
     
-    # Query snapshots
-    result = await db.execute(
-        select(AccountSnapshotModel).where(
-            and_(
-                AccountSnapshotModel.household_id == household_id,
-                AccountSnapshotModel.snapshot_date >= start_date,
-                AccountSnapshotModel.snapshot_date <= today,
-            )
-        ).order_by(AccountSnapshotModel.snapshot_date)
-    )
-    snapshots = result.scalars().all()
-    
-    # Convert to NetWorthHistoryEntry objects
-    entries = [
+    return [
         NetWorthHistoryEntry(
             date=snapshot.snapshot_date.isoformat(),
             net_worth=float(snapshot.net_worth),
         )
         for snapshot in snapshots
     ]
-    
-    return entries

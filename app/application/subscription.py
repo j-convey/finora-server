@@ -6,8 +6,8 @@ from typing import Any
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.subscription import Subscription, SubscriptionStatus
-from app.models.transaction import Transaction
+from app.infrastructure.models.subscription import Subscription, SubscriptionStatus
+from app.infrastructure.models.transaction import Transaction
 
 
 @dataclass

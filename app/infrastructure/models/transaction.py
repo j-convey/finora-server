@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.transaction_reimbursement import TransactionReimbursement
+    from app.infrastructure.models.transaction_reimbursement import TransactionReimbursement
 
 
 class Transaction(Base):

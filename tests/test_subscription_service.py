@@ -1,9 +1,9 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from app.models.subscription import SubscriptionStatus
-from app.services.subscription import SubscriptionService
+from app.infrastructure.models.subscription import SubscriptionStatus
+from app.application.subscription import SubscriptionService
 
 
 class SubscriptionServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -12,11 +12,11 @@ class SubscriptionServiceTests(unittest.IsolatedAsyncioTestCase):
         service = SubscriptionService(db)
 
         created = await service.create_subscription(
-            user_id=1,
+            household_id=1,
             data={"name": "Netflix", "recurrence_interval": 1, "recurrence_unit": "month"},
         )
 
-        self.assertEqual(created.user_id, 1)
+        self.assertEqual(created.household_id, 1)
         self.assertEqual(created.name, "Netflix")
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
@@ -26,7 +26,7 @@ class SubscriptionServiceTests(unittest.IsolatedAsyncioTestCase):
         service = SubscriptionService(db)
         service.find_by_id = AsyncMock(return_value=None)
 
-        result = await service.link_transaction("tx_1", "sub_1", user_id=42)
+        result = await service.link_transaction("tx_1", "sub_1", household_id=42)
 
         self.assertIsNone(result)
 
@@ -36,9 +36,9 @@ class SubscriptionServiceTests(unittest.IsolatedAsyncioTestCase):
         db.get = AsyncMock(return_value=tx)
 
         service = SubscriptionService(db)
-        service.find_by_id = AsyncMock(return_value=SimpleNamespace(id="sub_1", user_id=1))
+        service.find_by_id = AsyncMock(return_value=SimpleNamespace(id="sub_1", household_id=1))
 
-        updated = await service.unlink_transaction("tx_1", user_id=1)
+        updated = await service.unlink_transaction("tx_1", household_id=1)
 
         self.assertIsNotNone(updated)
         self.assertIsNone(updated.subscription_id)
@@ -47,10 +47,11 @@ class SubscriptionServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_find_active_subscriptions_for_user(self):
         db = AsyncMock()
         expected = [SimpleNamespace(id="sub_1", status=SubscriptionStatus.ACTIVE)]
-        scalars = AsyncMock()
+        scalars = MagicMock()
         scalars.all.return_value = expected
-        result_obj = AsyncMock()
+        result_obj = MagicMock()
         result_obj.scalars.return_value = scalars
+        db.execute = AsyncMock(return_value=result_obj)
         db.execute.return_value = result_obj
 
         service = SubscriptionService(db)

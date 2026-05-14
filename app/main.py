@@ -8,14 +8,19 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
 from app.core.database import Base, engine, AsyncSessionLocal
-from app.routers import health, accounts, transactions, budgets, simplefin, categories, admin, subscriptions, auth, users
-import app.models  # noqa: F401 — registers all models with Base.metadata
+from app.core.logging import get_logger, setup_logging
+from app.core.logging_middleware import LoggingMiddleware
+from app.api.v1.routers import health, accounts, transactions, budgets, simplefin, categories, admin, subscriptions, auth, users
+import app.infrastructure.models  # noqa: F401 — registers all models with Base.metadata
+
+setup_logging()
+logger = get_logger(__name__)
 
 
 async def _auto_sync_simplefin() -> None:
     """Background task: fetch latest SimpleFIN data on a schedule."""
-    from app.models.simplefin_config import SimplefinConfig
-    from app.routers.simplefin import _do_fetch
+    from app.infrastructure.models.simplefin_config import SimplefinConfig
+    from app.api.v1.routers.simplefin import _do_fetch
     from app.core.crypto import decrypt
 
     async with AsyncSessionLocal() as db:
@@ -33,12 +38,13 @@ async def _auto_sync_simplefin() -> None:
             await db.commit()
 
             if result["transactions_added"] > 0:
-                print(
-                    f"[auto-sync] {result['transactions_added']} new transaction(s), "
-                    f"{result['accounts_updated']} account(s) updated"
+                logger.info(
+                    "auto-sync completed",
+                    transactions_added=result["transactions_added"],
+                    accounts_updated=result["accounts_updated"],
                 )
-        except Exception as exc:
-            print(f"[auto-sync] SimpleFIN fetch failed: {exc}")
+        except Exception:
+            logger.exception("auto-sync failed")
 
 
 @asynccontextmanager
@@ -55,12 +61,12 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
     scheduler.start()
-    print("🚀 Starting Finora Backend...")
+    logger.info("starting Finora backend")
     yield
     # Shutdown
     scheduler.shutdown(wait=False)
     await engine.dispose()
-    print("👋 Shutting down Finora Backend...")
+    logger.info("shutting down Finora backend")
 
 
 app = FastAPI(
@@ -97,6 +103,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(LoggingMiddleware)
 
 # Routers
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])

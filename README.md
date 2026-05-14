@@ -122,7 +122,7 @@ Full API docs: `http://localhost:8080/docs` (Swagger UI)
 
 ## Client Setup
 
-See [CLIENT_AUTH_MIGRATION.md](./CLIENT_AUTH_MIGRATION.md) for detailed Flutter client integration guide covering:
+See [CLIENT_AUTH_MIGRATION.md](./docs/CLIENT_AUTH_MIGRATION.md) for detailed Flutter client integration guide covering:
 - Token storage and rotation
 - HTTP interceptor setup
 - Breaking API changes
@@ -140,7 +140,7 @@ See [CLIENT_AUTH_MIGRATION.md](./CLIENT_AUTH_MIGRATION.md) for detailed Flutter 
 - **Security:** bcrypt password hashing, encrypted secret storage
 - **Deployment:** Docker + GitHub Actions CI/CD
 
-For detailed architecture: see [ARCHITECTURE.md](./ARCHITECTURE.md)
+For detailed architecture: see [ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 
 ---
 
@@ -206,7 +206,7 @@ Apache License 2.0 — See [LICENSE](./LICENSE) for details.
 
 ## Support
 
-- 📖 **Docs:** [BACKEND_IMPLEMENTATION.md](./BACKEND_IMPLEMENTATION.md)
+- 📖 **Docs:** [BACKEND_IMPLEMENTATION.md](./docs/BACKEND_IMPLEMENTATION.md)
 - 🐛 **Issues:** [GitHub Issues](https://github.com/jconvey/finora-server/issues)
 - 💬 **Discussions:** [GitHub Discussions](https://github.com/jconvey/finora-server/discussions)
 

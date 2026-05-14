@@ -3,26 +3,25 @@ from decimal import Decimal
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.database import get_db
-from app.models.account import Account as AccountModel
-from app.models.category import Category as CategoryModel
-from app.models.simplefin_config import SimplefinConfig
-from app.models.transaction import Transaction as TransactionModel
-from app.models.user import User
-from app.schemas.simplefin import (
+from app.infrastructure.models.account import Account as AccountModel
+from app.infrastructure.models.simplefin_config import SimplefinConfig
+from app.infrastructure.models.transaction import Transaction as TransactionModel
+from app.infrastructure.models.user import User
+from app.infrastructure.repositories.category_repository import CategoryRepository
+from app.api.v1.schemas.simplefin import (
     SimplefinConnectRequest,
     SimplefinFetchResponse,
     SimplefinStatusResponse,
     NewTransaction,
 )
-from app.services.simplefin import claim_access_url, fetch_simplefin_data
-from app.services.transfer_detection import RawTransaction, detect_transfers
+from app.application.simplefin import claim_access_url, fetch_simplefin_data
+from app.application.transfer_detection import RawTransaction, detect_transfers
 
 router = APIRouter()
 
@@ -96,12 +95,7 @@ def _pick_color(index: int) -> str:
 
 async def _load_category_map(db: AsyncSession) -> tuple[dict[str, int], int]:
     """Load all system categories into a name→id dict and return the Uncategorized ID."""
-    result = await db.execute(
-        select(CategoryModel.id, CategoryModel.name).where(
-            CategoryModel.household_id.is_(None)
-        )
-    )
-    name_to_id = {name.lower(): cat_id for cat_id, name in result.all()}
+    name_to_id = await CategoryRepository(db).load_name_to_id_map(system_only=True)
     uncategorized_id = name_to_id.get("uncategorized", next(iter(name_to_id.values())))
     return name_to_id, uncategorized_id
 
@@ -350,7 +344,11 @@ async def connect(
         raise HTTPException(status_code=422, detail=str(exc))
 
     encrypted = encrypt(access_url, settings.SECRET_KEY)
-    result = await _do_fetch(access_url, db)
+
+    try:
+        result = await _do_fetch(access_url, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
     await db.merge(SimplefinConfig(
         household_id=1,

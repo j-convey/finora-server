@@ -3,7 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.schemas.health import DatabaseHealthResponse, HealthResponse
+from app.api.v1.schemas.health import DatabaseHealthResponse, HealthResponse
 
 router = APIRouter()
 

@@ -26,3 +26,6 @@ python-multipart==0.0.9
 
 # Background scheduler (auto-sync SimpleFIN)
 apscheduler==3.10.4
+
+# Structured logging
+structlog>=24.1.0

@@ -2,25 +2,26 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import uuid
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from typing import List
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.category import Category as CategoryModel
-from app.models.subscription import Subscription as SubscriptionModel
-from app.models.transaction import Transaction as TransactionModel
-from app.models.transaction_reimbursement import TransactionReimbursement as ReimbursementModel
-from app.models.user import User
-from app.schemas.transaction import Transaction, TransactionUpdate, SplitRequest
-from app.schemas.reimbursement import (
+from app.infrastructure.models.subscription import Subscription as SubscriptionModel
+from app.infrastructure.models.transaction import Transaction as TransactionModel
+from app.infrastructure.models.transaction_reimbursement import TransactionReimbursement as ReimbursementModel
+from app.infrastructure.models.user import User
+from app.api.v1.schemas.transaction import Transaction, TransactionUpdate, SplitRequest
+from app.api.v1.schemas.reimbursement import (
     ReimbursementCreate,
     ReimbursementListResponse,
     ReimbursementResponse,
     ReimbursementUpdate,
 )
+from app.infrastructure.repositories.transaction_repository import TransactionRepository
+from app.infrastructure.repositories.reimbursement_repository import ReimbursementRepository
+from app.infrastructure.repositories.category_repository import CategoryRepository
 
 router = APIRouter()
 
@@ -69,12 +70,7 @@ async def _resolve_category_id(db: AsyncSession, name: str) -> int:
     if not candidate:
         raise HTTPException(status_code=400, detail="Category cannot be empty")
 
-    result = await db.execute(
-        select(CategoryModel.id).where(
-            func.lower(CategoryModel.name) == candidate.lower()
-        )
-    )
-    cat_id = result.scalar_one_or_none()
+    cat_id = await CategoryRepository(db).resolve_id_by_name(candidate)
     if cat_id is None:
         raise HTTPException(
             status_code=400,
@@ -89,12 +85,8 @@ async def get_transactions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(TransactionModel).options(selectinload(TransactionModel.category_rel))
-    if subscription_id:
-        stmt = stmt.where(TransactionModel.subscription_id == subscription_id)
-
-    result = await db.execute(stmt.order_by(TransactionModel.date.desc()))
-    rows = result.scalars().all()
+    repo = TransactionRepository(db)
+    rows = await repo.list_with_category(subscription_id=subscription_id)
     return [_to_response(r) for r in rows]
 
 
@@ -105,7 +97,8 @@ async def update_transaction(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    txn = await db.get(TransactionModel, transaction_id)
+    repo = TransactionRepository(db)
+    txn = await repo.get_by_id(transaction_id)
     if txn is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
@@ -160,7 +153,8 @@ async def split_transaction(
     - The parent row is mutated to is_split_parent=True (excluded from budget queries).
     - The entire operation is atomic: any failure rolls back all changes.
     """
-    parent = await db.get(TransactionModel, transaction_id)
+    repo = TransactionRepository(db)
+    parent = await repo.get_by_id(transaction_id)
     if parent is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
@@ -252,7 +246,8 @@ async def unsplit_transaction(
     The parent's is_split_parent flag is cleared and all children are deleted
     (CASCADE handles this at the DB level, but we also clear the flag explicitly).
     """
-    parent = await db.get(TransactionModel, transaction_id)
+    repo = TransactionRepository(db)
+    parent = await repo.get_by_id(transaction_id)
     if parent is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     if not parent.is_split_parent:
@@ -291,28 +286,6 @@ def _reimb_to_response(r: ReimbursementModel) -> ReimbursementResponse:
     )
 
 
-async def _get_transaction_for_household(
-    db: AsyncSession,
-    transaction_id: str,
-    household_id: int,
-    *,
-    for_update: bool = False,
-) -> TransactionModel:
-    """Fetch a transaction and verify it belongs to the caller's household.
-
-    Returns 404 (not 403) for any missing or out-of-household transaction to
-    prevent IDOR information leakage.
-    """
-    stmt = select(TransactionModel).where(TransactionModel.id == transaction_id)
-    if for_update:
-        stmt = stmt.with_for_update()
-    result = await db.execute(stmt)
-    txn = result.scalar_one_or_none()
-    if txn is None or txn.household_id != household_id:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    return txn
-
-
 @router.post(
     "/transactions/reimbursements",
     response_model=ReimbursementResponse,
@@ -331,12 +304,18 @@ async def create_reimbursement(
     violations, and 404 for any tenant-isolation failure.
     """
     # Row-level locks on both transactions prevent concurrent double-allocation.
-    expense_txn = await _get_transaction_for_household(
-        db, body.expense_transaction_id, current_user.household_id, for_update=True
+    repo = TransactionRepository(db)
+    reimb_repo = ReimbursementRepository(db)
+    expense_txn = await repo.get_by_id_for_household(
+        body.expense_transaction_id, current_user.household_id, for_update=True
     )
-    income_txn = await _get_transaction_for_household(
-        db, body.income_transaction_id, current_user.household_id, for_update=True
+    if expense_txn is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    income_txn = await repo.get_by_id_for_household(
+        body.income_transaction_id, current_user.household_id, for_update=True
     )
+    if income_txn is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
     # Rule 1 – Directionality: expense must be type='expense', income must be type='income'
     if expense_txn.type != "expense":
@@ -367,11 +346,7 @@ async def create_reimbursement(
         )
 
     # Rule 4 – Income capacity: sum of existing allocations + new amount <= income amount
-    income_allocated_result = await db.execute(
-        select(func.coalesce(func.sum(ReimbursementModel.amount), Decimal("0")))
-        .where(ReimbursementModel.income_transaction_id == income_txn.id)
-    )
-    income_allocated: Decimal = income_allocated_result.scalar_one()
+    income_allocated: Decimal = await reimb_repo.sum_allocated_to_income(income_txn.id)
     if income_allocated + body.amount > income_txn.amount:
         over_by = float((income_allocated + body.amount - income_txn.amount))
         raise HTTPException(
@@ -385,11 +360,7 @@ async def create_reimbursement(
         )
 
     # Rule 5 – Expense over-reimbursement: sum of existing + new <= expense amount
-    expense_reimbursed_result = await db.execute(
-        select(func.coalesce(func.sum(ReimbursementModel.amount), Decimal("0")))
-        .where(ReimbursementModel.expense_transaction_id == expense_txn.id)
-    )
-    expense_reimbursed: Decimal = expense_reimbursed_result.scalar_one()
+    expense_reimbursed: Decimal = await reimb_repo.sum_reimbursed_from_expense(expense_txn.id)
     if expense_reimbursed + body.amount > expense_txn.amount:
         over_by = float((expense_reimbursed + body.amount - expense_txn.amount))
         raise HTTPException(
@@ -445,32 +416,30 @@ async def update_reimbursement(
     Re-validates capacity rules (Rules 4 & 5) using the updated amount so the
     system stays consistent. Row-level locks are acquired on both transactions.
     """
-    result = await db.execute(
-        select(ReimbursementModel).where(ReimbursementModel.id == reimbursement_id)
-    )
-    reimbursement = result.scalar_one_or_none()
+    repo = TransactionRepository(db)
+    reimb_repo = ReimbursementRepository(db)
+    reimbursement = await reimb_repo.get_by_id(reimbursement_id)
     if reimbursement is None:
         raise HTTPException(status_code=404, detail="Reimbursement not found")
 
     # Verify household ownership for both transactions (tenant isolation)
-    expense_txn = await _get_transaction_for_household(
-        db, reimbursement.expense_transaction_id, current_user.household_id, for_update=True
+    expense_txn = await repo.get_by_id_for_household(
+        reimbursement.expense_transaction_id, current_user.household_id, for_update=True
     )
-    income_txn = await _get_transaction_for_household(
-        db, reimbursement.income_transaction_id, current_user.household_id, for_update=True
+    if expense_txn is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    income_txn = await repo.get_by_id_for_household(
+        reimbursement.income_transaction_id, current_user.household_id, for_update=True
     )
+    if income_txn is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
     new_amount = body.amount if body.amount is not None else reimbursement.amount
 
     # Re-validate capacity excluding this reimbursement's own current amount
-    income_allocated_result = await db.execute(
-        select(func.coalesce(func.sum(ReimbursementModel.amount), Decimal("0")))
-        .where(
-            ReimbursementModel.income_transaction_id == income_txn.id,
-            ReimbursementModel.id != reimbursement_id,
-        )
+    income_allocated: Decimal = await reimb_repo.sum_allocated_to_income(
+        income_txn.id, exclude_id=reimbursement_id
     )
-    income_allocated: Decimal = income_allocated_result.scalar_one()
     if income_allocated + new_amount > income_txn.amount:
         over_by = float((income_allocated + new_amount - income_txn.amount))
         raise HTTPException(
@@ -483,14 +452,9 @@ async def update_reimbursement(
             },
         )
 
-    expense_reimbursed_result = await db.execute(
-        select(func.coalesce(func.sum(ReimbursementModel.amount), Decimal("0")))
-        .where(
-            ReimbursementModel.expense_transaction_id == expense_txn.id,
-            ReimbursementModel.id != reimbursement_id,
-        )
+    expense_reimbursed: Decimal = await reimb_repo.sum_reimbursed_from_expense(
+        expense_txn.id, exclude_id=reimbursement_id
     )
-    expense_reimbursed: Decimal = expense_reimbursed_result.scalar_one()
     if expense_reimbursed + new_amount > expense_txn.amount:
         over_by = float((expense_reimbursed + new_amount - expense_txn.amount))
         raise HTTPException(
@@ -524,17 +488,16 @@ async def delete_reimbursement(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """Remove a reimbursement link. Budget queries recalculate dynamically."""
-    result = await db.execute(
-        select(ReimbursementModel).where(ReimbursementModel.id == reimbursement_id)
-    )
-    reimbursement = result.scalar_one_or_none()
+    # Verify the caller's household owns at least the expense transaction
+    repo = TransactionRepository(db)
+    reimb_repo = ReimbursementRepository(db)
+    reimbursement = await reimb_repo.get_by_id(reimbursement_id)
     if reimbursement is None:
         raise HTTPException(status_code=404, detail="Reimbursement not found")
-
-    # Verify the caller's household owns at least the expense transaction
-    await _get_transaction_for_household(
-        db, reimbursement.expense_transaction_id, current_user.household_id
-    )
+    if await repo.get_by_id_for_household(
+        reimbursement.expense_transaction_id, current_user.household_id
+    ) is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
     await db.delete(reimbursement)
     await db.commit()
@@ -556,15 +519,14 @@ async def list_reimbursements(
     the live database state so the client can render capacity indicators without
     a second request.
     """
-    txn = await _get_transaction_for_household(db, transaction_id, current_user.household_id)
+    repo = TransactionRepository(db)
+    reimb_repo = ReimbursementRepository(db)
+    txn = await repo.get_by_id_for_household(transaction_id, current_user.household_id)
+    if txn is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
     # Fetch links where this transaction is either the expense or the income side
-    stmt = select(ReimbursementModel).where(
-        (ReimbursementModel.expense_transaction_id == transaction_id)
-        | (ReimbursementModel.income_transaction_id == transaction_id)
-    ).order_by(ReimbursementModel.created_at.asc())
-    result = await db.execute(stmt)
-    links = result.scalars().all()
+    links = await reimb_repo.list_by_transaction(transaction_id)
 
     allocated_amount = sum((r.amount for r in links), Decimal("0"))
     remaining_amount = max(txn.amount - allocated_amount, Decimal("0"))
