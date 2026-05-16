@@ -16,6 +16,28 @@ class CategoryRepository(BaseRepository[Category]):
         )
         return [name for (name,) in result.all()]
 
+    async def list_grouped(self) -> list[dict]:
+        """Return categories grouped by group_name, preserving sort_order.
+
+        Returns a list of dicts: [{group, type, categories: [{id, name}, ...]}, ...]
+        Groups maintain the sort_order of their first member so the overall
+        ordering matches the seeded definition.
+        """
+        result = await self.db.execute(
+            select(Category.id, Category.name, Category.group_name, Category.type)
+            .order_by(Category.sort_order, Category.name)
+        )
+        rows = result.all()
+
+        groups: dict[str, dict] = {}
+        for cat_id, name, group_name, cat_type in rows:
+            key = group_name or "Other"
+            if key not in groups:
+                groups[key] = {"group": key, "type": cat_type or "expense", "categories": []}
+            groups[key]["categories"].append({"id": cat_id, "name": name})
+
+        return list(groups.values())
+
     async def resolve_id_by_name(self, name: str) -> int | None:
         """Return the category ID for a given name (case-insensitive), or None."""
         result = await self.db.execute(

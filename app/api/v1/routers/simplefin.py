@@ -33,58 +33,74 @@ _COLORS = [
 # Maps SimpleFIN provider category strings (lowercased) to our system category names.
 # provider_category is preserved as-is; this mapping only determines category_id.
 _PROVIDER_CATEGORY_MAP: dict[str, str] = {
+    # Food & Dining
     "food and drink": "Restaurants & Bars",
     "food & drink": "Restaurants & Bars",
     "restaurants": "Restaurants & Bars",
     "dining": "Restaurants & Bars",
-    "fast food": "Restaurants & Bars",
-    "coffee shops": "Coffee Shops",
+    "fast food": "Fast Food",
+    "coffee shops": "Coffee Shops & Cafes",
     "groceries": "Groceries",
     "supermarkets": "Groceries",
-    "shopping": "Shopping",
-    "general merchandise": "Shopping",
-    "clothing": "Clothing",
-    "electronics": "Electronics",
+    # Shopping
+    "shopping": "Household Supplies",
+    "general merchandise": "Household Supplies",
+    "clothing": "Clothing & Apparel",
+    "electronics": "Electronics & Gadgets",
+    # Travel
     "travel": "Travel & Vacation",
-    "airlines": "Travel & Vacation",
-    "hotels": "Travel & Vacation",
+    "airlines": "Flights & Airfare",
+    "hotels": "Hotels & Lodging",
+    # Entertainment
     "entertainment": "Entertainment & Recreation",
     "recreation": "Entertainment & Recreation",
-    "subscription": "Entertainment & Recreation",
-    "streaming": "Entertainment & Recreation",
-    "utilities": "Gas & Electric",
-    "gas and electric": "Gas & Electric",
-    "electric": "Gas & Electric",
-    "internet": "Internet & Cable",
-    "cable": "Internet & Cable",
-    "phone": "Phone",
-    "mobile phone": "Phone",
+    "subscription": "Streaming Subscriptions",
+    "streaming": "Streaming Subscriptions",
+    # Utilities
+    "utilities": "Electricity",
+    "gas and electric": "Electricity",
+    "electric": "Electricity",
+    "internet": "Internet",
+    "cable": "Cable & Television",
+    "phone": "Phone (Mobile & Landline)",
+    "mobile phone": "Phone (Mobile & Landline)",
+    # Income
     "income": "Paychecks",
     "payroll": "Paychecks",
     "direct deposit": "Paychecks",
-    "transfer": "Transfer",
-    "gas": "Gas",
-    "automotive": "Gas",
-    "auto": "Auto Payment",
-    "insurance": "Insurance",
-    "health": "Medical",
-    "healthcare": "Medical",
-    "medical": "Medical",
-    "pharmacy": "Medical",
-    "fitness": "Fitness",
-    "gym": "Fitness",
-    "education": "Education",
-    "taxes": "Taxes",
-    "personal care": "Personal",
-    "pets": "Pets",
+    # Transfers
+    "transfer": "Internal Transfer",
+    # Transportation
+    "gas": "Gas & Fuel",
+    "automotive": "Auto Maintenance & Repairs",
+    "auto": "Auto Loan / Lease Payment",
+    # Insurance
+    "insurance": "Auto Insurance",
+    # Health
+    "health": "Medical & Doctor Visits",
+    "healthcare": "Medical & Doctor Visits",
+    "medical": "Medical & Doctor Visits",
+    "pharmacy": "Prescriptions & Medications",
+    # Fitness
+    "fitness": "Fitness / Gym Memberships",
+    "gym": "Fitness / Gym Memberships",
+    # Education
+    "education": "Tuition & Education Fees",
+    # Financial
+    "taxes": "Taxes (Income, Property, etc.)",
+    "personal care": "Personal Care Services",
+    "pets": "Pet Food & Supplies",
+    # Housing
     "mortgage": "Mortgage",
     "rent": "Rent",
-    "home improvement": "Home Improvement",
-    "atm": "Cash & ATM",
-    "cash": "Cash & ATM",
+    "home improvement": "Home Improvement & Renovations",
+    # Financial
+    "atm": "Cash & ATM Withdrawals",
+    "cash": "Cash & ATM Withdrawals",
     "fees": "Financial Fees",
-    "bank fees": "Financial Fees",
-    "interest": "Interest",
+    "bank fees": "Bank & Credit Card Fees",
+    "interest": "Interest Income",
+    # Credit card payment
     "credit card payment": "Credit Card Payment",
 }
 
@@ -138,7 +154,7 @@ def _provider_signals_transfer(provider_category: str | None) -> bool:
     if not provider_category:
         return False
     mapped = _PROVIDER_CATEGORY_MAP.get(provider_category.strip().lower())
-    return mapped == "Transfer"
+    return mapped == "Internal Transfer"
 
 
 async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
@@ -158,7 +174,7 @@ async def _do_fetch(access_url: str, db: AsyncSession) -> dict:
 
     # Load category lookup once for the entire sync.
     name_to_id, uncategorized_id = await _load_category_map(db)
-    transfer_category_id = name_to_id.get("transfer", uncategorized_id)
+    transfer_category_id = name_to_id.get("internal transfer", uncategorized_id)
     cc_payment_category_id = name_to_id.get("credit card payment", transfer_category_id)
 
     institutions: List[str] = []

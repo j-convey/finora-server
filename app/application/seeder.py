@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from sqlalchemy import select
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -22,121 +23,302 @@ from app.infrastructure.models.subscription import Subscription as SubscriptionM
 
 logger = get_logger(__name__)
 
-_DEFAULT_CATEGORIES = [
-    # Income
-    "Paychecks",
-    "Interest",
-    "Business Income",
-    "Other Income",
-    # Gifts & Donations
-    "Charity",
-    "Gifts",
-    # Auto & Transport
-    "Auto Payment",
-    "Public Transit",
-    "Gas",
-    "Auto Maintenance",
-    "Parking & Tolls",
-    "Taxi & Ride Shares",
-    # Housing
-    "Mortgage",
-    "Rent",
-    "Home Improvement",
-    # Bills & Utilities
-    "Garbage",
-    "Water",
-    "Gas & Electric",
-    "Internet & Cable",
-    "Phone",
-    # Food & Dining
-    "Groceries",
-    "Restaurants & Bars",
-    "Coffee Shops",
-    # Travel & Lifestyle
-    "Travel & Vacation",
-    "Entertainment & Recreation",
-    "Personal",
-    "Pets",
-    "Fun Money",
-    # Shopping
-    "Shopping",
-    "Clothing",
-    "Furniture & Housewares",
-    "Electronics",
-    # Children
-    "Child Care",
-    "Child Activities",
-    # Education
-    "Student Loans",
-    "Education",
-    # Health & Wellness
-    "Medical",
-    "Dentist",
-    "Fitness",
-    # Financial
-    "Loan Repayment",
-    "Financial & Legal Services",
-    "Financial Fees",
-    "Cash & ATM",
-    "Insurance",
-    "Taxes",
-    # Other
-    "Uncategorized",
-    "Check",
-    "Miscellaneous",
-    # Business
-    "Advertising & Promotion",
-    "Business Utilities & Communication",
-    "Employee Wages & Contract Labor",
-    "Business Travel & Meals",
-    "Business Auto Expenses",
-    "Business Insurance",
-    "Office Supplies & Expenses",
-    "Office Rent",
-    "Postage & Shipping",
-    # Transfers
-    "Transfer",
-    "Credit Card Payment",
-    "Balance Adjustments",
-]
+# Grouped category structure.  Each key is the display group name; the value
+# carries the type that all subcategories inherit plus the ordered subcategory
+# list.  sort_order is assigned globally (sequential across all groups) so the
+# DB can order a flat list correctly.
+_DEFAULT_CATEGORY_GROUPS: dict[str, dict] = {
+    "Income": {
+        "type": "income",
+        "subcategories": [
+            "Paychecks",
+            "Bonuses & Commissions",
+            "Overtime",
+            "Business Income / Revenue",
+            "Freelance / Side Hustle Income",
+            "Self-Employment Income",
+            "Interest Income",
+            "Dividends & Investment Income",
+            "Rental Income",
+            "Pension / Retirement Income",
+            "Government Benefits (Social Security, etc.)",
+            "Tax Refunds & Credits",
+            "Reimbursements",
+            "Gifts Received",
+            "Alimony / Child Support Received",
+            "Other Income",
+        ],
+    },
+    "Housing": {
+        "type": "expense",
+        "subcategories": [
+            "Mortgage",
+            "Rent",
+            "Property Taxes",
+            "HOA / Condo Fees",
+            "Homeowners / Renters Insurance",
+            "Home Maintenance & Repairs",
+            "Home Improvement & Renovations",
+            "Lawn Care & Landscaping",
+            "Home Services (cleaning, pest control, etc.)",
+            "Furniture & Housewares",
+            "Appliances",
+        ],
+    },
+    "Transportation": {
+        "type": "expense",
+        "subcategories": [
+            "Auto Loan / Lease Payment",
+            "Gas & Fuel",
+            "Auto Insurance",
+            "Auto Maintenance & Repairs",
+            "Tires & Auto Parts",
+            "Car Wash & Detailing",
+            "Parking & Tolls",
+            "Vehicle Registration & DMV Fees",
+            "Public Transit",
+            "Taxi & Ride Shares",
+            "Bike / Scooter Share Programs",
+            "Roadside Assistance & Warranty",
+        ],
+    },
+    "Utilities": {
+        "type": "expense",
+        "subcategories": [
+            "Electricity",
+            "Natural Gas",
+            "Water & Sewer",
+            "Garbage & Recycling",
+            "Internet",
+            "Cable & Television",
+            "Phone (Mobile & Landline)",
+            "Streaming Subscriptions",
+            "Subscriptions & Memberships",
+        ],
+    },
+    "Food & Dining": {
+        "type": "expense",
+        "subcategories": [
+            "Groceries",
+            "Restaurants & Bars",
+            "Fast Food",
+            "Coffee Shops & Cafes",
+            "Food Delivery & Takeout",
+            "Alcohol & Tobacco",
+            "Snacks & Convenience Stores",
+        ],
+    },
+    "Shopping": {
+        "type": "expense",
+        "subcategories": [
+            "Clothing & Apparel",
+            "Shoes & Accessories",
+            "Jewelry",
+            "Electronics & Gadgets",
+            "Books, Music & Media",
+            "Household Supplies",
+            "Tools & Hardware",
+        ],
+    },
+    "Personal Care": {
+        "type": "expense",
+        "subcategories": [
+            "Toiletries & Personal Hygiene",
+            "Beauty & Cosmetics",
+            "Haircuts & Salon Services",
+            "Spa, Massage & Wellness Treatments",
+            "Dry Cleaning & Laundry",
+            "Personal Care Services",
+        ],
+    },
+    "Health & Wellness": {
+        "type": "expense",
+        "subcategories": [
+            "Health Insurance",
+            "Medical & Doctor Visits",
+            "Prescriptions & Medications",
+            "Pharmacy / Over-the-Counter",
+            "Dentist & Dental Care",
+            "Vision Care / Eyeglasses / Contacts",
+            "Therapy & Mental Health",
+            "Hospital / Urgent Care / Emergency",
+            "Medical Devices & Supplies",
+            "Supplements & Vitamins",
+            "Alternative Medicine",
+        ],
+    },
+    "Fitness & Recreation": {
+        "type": "expense",
+        "subcategories": [
+            "Fitness / Gym Memberships",
+            "Fitness Classes & Equipment",
+            "Sports & Recreation",
+        ],
+    },
+    "Travel & Vacation": {
+        "type": "expense",
+        "subcategories": [
+            "Travel & Vacation",
+            "Flights & Airfare",
+            "Hotels & Lodging",
+            "Rental Cars & Travel Transportation",
+            "Travel Meals & Activities",
+            "Souvenirs & Travel Gifts",
+        ],
+    },
+    "Entertainment & Lifestyle": {
+        "type": "expense",
+        "subcategories": [
+            "Entertainment & Recreation",
+            "Movies, Theater & Concerts",
+            "Video Games & Gaming",
+            "Hobbies & Crafts",
+            "Fun Money / Pocket Spending",
+            "Sporting Events",
+        ],
+    },
+    "Children & Family": {
+        "type": "expense",
+        "subcategories": [
+            "Childcare / Daycare",
+            "Children's Clothing & Shoes",
+            "Child Activities / Sports / Lessons",
+            "School Fees & Supplies",
+            "Toys & Baby Supplies",
+            "Allowance / Kids' Spending",
+            "Child Support / Alimony Paid",
+        ],
+    },
+    "Education": {
+        "type": "expense",
+        "subcategories": [
+            "Student Loans",
+            "Tuition & Education Fees",
+            "Books & Educational Supplies",
+            "Professional Development / Courses",
+        ],
+    },
+    "Pets": {
+        "type": "expense",
+        "subcategories": [
+            "Pet Food & Supplies",
+            "Veterinary Care & Pet Medical",
+            "Pet Grooming & Boarding",
+            "Pet Insurance",
+            "Pet Toys & Accessories",
+        ],
+    },
+    "Gifts & Donations": {
+        "type": "expense",
+        "subcategories": [
+            "Charity & Donations",
+            "Religious Contributions",
+            "Gifts Given",
+        ],
+    },
+    "Financial & Debt": {
+        "type": "expense",
+        "subcategories": [
+            "Loan Repayment (Non-Auto/Student)",
+            "Financial & Legal Services",
+            "Financial Fees",
+            "Bank & Credit Card Fees",
+            "Investment Fees",
+            "Cash & ATM Withdrawals",
+            "Taxes (Income, Property, etc.)",
+            "Accountant / Tax Preparation",
+        ],
+    },
+    "Business Expenses": {
+        "type": "expense",
+        "subcategories": [
+            "Advertising & Promotion",
+            "Business Utilities & Communication",
+            "Employee Wages & Contract Labor",
+            "Business Travel & Meals",
+            "Business Auto Expenses",
+            "Business Insurance",
+            "Office Supplies & Expenses",
+            "Office Rent",
+            "Postage & Shipping",
+            "Business Software & Tools",
+            "Professional Services (legal, accounting)",
+            "Business Licenses & Permits",
+            "Marketing & Client Entertainment",
+        ],
+    },
+    "Transfers & Adjustments": {
+        "type": "transfer",
+        "subcategories": [
+            "Internal Transfer",
+            "Savings Contributions",
+            "Investment Contributions",
+            "Retirement Contributions",
+            "Credit Card Payment",
+            "Balance Adjustments",
+        ],
+    },
+    "Other": {
+        "type": "expense",
+        "subcategories": [
+            "Uncategorized",
+            "Check",
+            "Miscellaneous",
+        ],
+    },
+}
 
 # Budget definitions use category names; IDs are looked up at seed time.
 _DEFAULT_BUDGETS = [
     {"id": "b1", "household_id": 1, "category_name": "Groceries",              "allocated": Decimal("400.00"), "color": "#66BB6A"},
     {"id": "b2", "household_id": 1, "category_name": "Restaurants & Bars",     "allocated": Decimal("200.00"), "color": "#FFA726"},
-    {"id": "b3", "household_id": 1, "category_name": "Gas",                    "allocated": Decimal("150.00"), "color": "#42A5F5"},
+    {"id": "b3", "household_id": 1, "category_name": "Gas & Fuel",             "allocated": Decimal("150.00"), "color": "#42A5F5"},
     {"id": "b4", "household_id": 1, "category_name": "Entertainment & Recreation", "allocated": Decimal("100.00"), "color": "#AB47BC"},
-    {"id": "b5", "household_id": 1, "category_name": "Shopping",               "allocated": Decimal("150.00"), "color": "#EC407A"},
-    {"id": "b6", "household_id": 1, "category_name": "Medical",                "allocated": Decimal("100.00"), "color": "#EF5350"},
-    {"id": "b7", "household_id": 1, "category_name": "Fitness",                "allocated": Decimal("50.00"),  "color": "#26A69A"},
+    {"id": "b5", "household_id": 1, "category_name": "Household Supplies",     "allocated": Decimal("150.00"), "color": "#EC407A"},
+    {"id": "b6", "household_id": 1, "category_name": "Medical & Doctor Visits","allocated": Decimal("100.00"), "color": "#EF5350"},
+    {"id": "b7", "household_id": 1, "category_name": "Fitness / Gym Memberships", "allocated": Decimal("50.00"), "color": "#26A69A"},
 ]
 
 
 async def seed_categories() -> None:
-    """Insert default system categories if any are missing.
+    """Insert default system categories with canonical stable IDs.
 
-    Safe to re-run: only names not yet present are inserted, so adding a new
-    default in code will be picked up on the next startup without disturbing
-    existing rows.
+    Canonical ID = sort_order + 1 (1-based). IDs are assigned explicitly so
+    every fresh deployment gets the same ID for every system category —
+    Flutter clients can cache the category list indefinitely.
+
+    Safe to re-run: categories already present (by name) are skipped.
+    After inserting, the PostgreSQL sequence is reset to 144 so that
+    user-created custom categories start from a non-conflicting value.
     """
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(CategoryModel.name))
         existing = {name for (name,) in result.all()}
 
         added = 0
-        for index, name in enumerate(_DEFAULT_CATEGORIES):
-            if name in existing:
-                continue
-            db.add(
-                CategoryModel(
-                    name=name,
-                    is_system=True,
-                    sort_order=index,
-                )
-            )
-            added += 1
+        sort_order = 0
+        for group_name, group in _DEFAULT_CATEGORY_GROUPS.items():
+            cat_type = group["type"]
+            for name in group["subcategories"]:
+                canonical_id = sort_order + 1
+                if name not in existing:
+                    db.add(
+                        CategoryModel(
+                            id=canonical_id,
+                            name=name,
+                            group_name=group_name,
+                            type=cat_type,
+                            is_system=True,
+                            sort_order=sort_order,
+                        )
+                    )
+                    added += 1
+                sort_order += 1
 
         if added:
+            await db.commit()
+            # Reset sequence so custom categories never collide with system IDs.
+            await db.execute(sa.text("SELECT setval('categories_id_seq', 143)"))
             await db.commit()
             logger.info("seeded default categories", count=added)
 
@@ -270,7 +452,7 @@ async def seed_subscriptions() -> None:
                 "household_id": 1,
                 "name": "Planet Fitness",
                 "merchant_name": "Planet Fitness",
-                "category": "Fitness",
+                "category": "Fitness / Gym Memberships",
                 "expected_amount": Decimal("23.00"),
                 "min_amount": Decimal("22.00"),
                 "max_amount": Decimal("25.00"),
@@ -318,7 +500,7 @@ async def seed_subscriptions() -> None:
                 "household_id": 1,
                 "name": "Adobe Creative Cloud",
                 "merchant_name": "Adobe",
-                "category": "Software & Services",
+                "category": "Business Software & Tools",
                 "expected_amount": Decimal("59.99"),
                 "min_amount": Decimal("59.99"),
                 "max_amount": Decimal("65.00"),
@@ -334,7 +516,7 @@ async def seed_subscriptions() -> None:
                 "household_id": 1,
                 "name": "Internet & Cable",
                 "merchant_name": "Comcast",
-                "category": "Internet & Cable",
+                "category": "Internet",
                 "expected_amount": Decimal("89.99"),
                 "min_amount": Decimal("85.00"),
                 "max_amount": Decimal("95.00"),

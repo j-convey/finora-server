@@ -124,6 +124,7 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
         email=body.email,
         hashed_password=_hash_password(body.password),
         full_name=body.full_name,
+        is_admin=True,  # First registered user is always the admin/owner.
     )
     db.add(user)
     await db.flush()  # populate user.id before _issue_tokens
