@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text, select
+from sqlalchemy import text, select, func
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List
@@ -12,9 +12,16 @@ from app.infrastructure.models.account import Account as AccountModel
 from app.infrastructure.models.transaction import Transaction as TransactionModel
 from app.infrastructure.models.user import User
 from app.infrastructure.models.budget import Budget as BudgetModel
-from app.infrastructure.models.account_snapshot import AccountSnapshot as AccountSnapshotModel
-from app.infrastructure.models.simplefin_config import SimplefinConfig as SimplefinConfigModel
-from app.infrastructure.models.subscription import RecurrenceUnit, Subscription as SubscriptionModel
+from app.infrastructure.models.account_snapshot import (
+    AccountSnapshot as AccountSnapshotModel,
+)
+from app.infrastructure.models.simplefin_config import (
+    SimplefinConfig as SimplefinConfigModel,
+)
+from app.infrastructure.models.subscription import (
+    RecurrenceUnit,
+    Subscription as SubscriptionModel,
+)
 from app.infrastructure.models.transaction import Transaction
 from app.application.subscription import SubscriptionService
 
@@ -24,6 +31,7 @@ router = APIRouter()
 # ============================================================================
 # Export/Import Models
 # ============================================================================
+
 
 class DatabaseExport(BaseModel):
     """Complete database state export."""
@@ -70,7 +78,10 @@ async def _export_row_dicts(db: AsyncSession, model_cls, order_by=None) -> List[
     result = await db.execute(stmt)
     rows = result.scalars().all()
     return [
-        {col: _serialize_value(getattr(row, col)) for col in row.__table__.columns.keys()}
+        {
+            col: _serialize_value(getattr(row, col))
+            for col in row.__table__.columns.keys()
+        }
         for row in rows
     ]
 
@@ -82,7 +93,7 @@ async def reset_database(
 ):
     """
     **CAUTION: This endpoint deletes ALL data from the database.**
-    
+
     **Requires admin role.**
 
     Clears all records from the following tables:
@@ -187,16 +198,25 @@ async def export_database(
     try:
         # Export all tables
         accounts = await _export_row_dicts(db, AccountModel, AccountModel.name)
-        subscriptions = await _export_row_dicts(db, SubscriptionModel, SubscriptionModel.name)
-        transactions = await _export_row_dicts(db, TransactionModel, TransactionModel.date.desc())
+        subscriptions = await _export_row_dicts(
+            db, SubscriptionModel, SubscriptionModel.name
+        )
+        transactions = await _export_row_dicts(
+            db, TransactionModel, TransactionModel.date.desc()
+        )
         budgets = await _export_row_dicts(db, BudgetModel, BudgetModel.category)
-        snapshots = await _export_row_dicts(db, AccountSnapshotModel, AccountSnapshotModel.snapshot_date)
+        snapshots = await _export_row_dicts(
+            db, AccountSnapshotModel, AccountSnapshotModel.snapshot_date
+        )
 
         # SimpleFIN config is optional (at most 1 row)
         result = await db.execute(select(SimplefinConfigModel))
         config_row = result.scalar_one_or_none()
         simplefin_config = (
-            {col: _serialize_value(getattr(config_row, col)) for col in config_row.__table__.columns.keys()}
+            {
+                col: _serialize_value(getattr(config_row, col))
+                for col in config_row.__table__.columns.keys()
+            }
             if config_row
             else None
         )
