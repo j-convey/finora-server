@@ -45,7 +45,13 @@ def upgrade() -> None:
     # 1. Drop FK constraints so we can freely mutate PKs/FKs.
     # ------------------------------------------------------------------
     conn.execute(sa.text(
+        "ALTER TABLE transactions DROP CONSTRAINT IF EXISTS fk_transactions_category_id"
+    ))
+    conn.execute(sa.text(
         "ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_category_id_fkey"
+    ))
+    conn.execute(sa.text(
+        "ALTER TABLE budgets DROP CONSTRAINT IF EXISTS fk_budgets_category_id"
     ))
     conn.execute(sa.text(
         "ALTER TABLE budgets DROP CONSTRAINT IF EXISTS budgets_category_id_fkey"
@@ -121,12 +127,12 @@ def upgrade() -> None:
     # ------------------------------------------------------------------
     conn.execute(sa.text("""
         ALTER TABLE transactions
-        ADD CONSTRAINT transactions_category_id_fkey
+        ADD CONSTRAINT fk_transactions_category_id
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
     """))
     conn.execute(sa.text("""
         ALTER TABLE budgets
-        ADD CONSTRAINT budgets_category_id_fkey
+        ADD CONSTRAINT fk_budgets_category_id
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
     """))
 
