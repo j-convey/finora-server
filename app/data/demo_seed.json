@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "exported_at": "2024-05-18T10:00:00+00:00",
+  "accounts": [
+    {
+      "id": "acc_001",
+      "household_id": "hh_demo",
+      "name": "Checking Account",
+      "type": "depository",
+      "subtype": "checking",
+      "current_balance": 2500.00,
+      "currency": "USD",
+      "mask": "1234",
+      "institution_name": "Demo Bank",
+      "is_active": true,
+      "is_hidden": false,
+      "created_at": "2024-01-01T00:00:00+00:00",
+      "updated_at": "2024-05-18T10:00:00+00:00"
+    },
+    {
+      "id": "acc_002",
+      "household_id": "hh_demo",
+      "name": "Savings Account",
+      "type": "depository",
+      "subtype": "savings",
+      "current_balance": 15000.00,
+      "currency": "USD",
+      "mask": "5678",
+      "institution_name": "Demo Bank",
+      "is_active": true,
+      "is_hidden": false,
+      "created_at": "2024-01-01T00:00:00+00:00",
+      "updated_at": "2024-05-18T10:00:00+00:00"
+    },
+    {
+      "id": "acc_003",
+      "household_id": "hh_demo",
+      "name": "Credit Card",
+      "type": "credit",
+      "subtype": "credit card",
+      "current_balance": 450.75,
+      "currency": "USD",
+      "mask": "9012",
+      "institution_name": "Demo Bank",
+      "is_active": true,
+      "is_hidden": false,
+      "created_at": "2024-01-01T00:00:00+00:00",
+      "updated_at": "2024-05-18T10:00:00+00:00"
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "sub_001",
+      "household_id": "hh_demo",
+      "name": "Netflix",
+      "merchant_name": "Netflix",
+      "min_amount": 15.00,
+      "max_amount": 16.00,
+      "recurrence_interval": 1,
+      "recurrence_unit": "month",
+      "is_active": true,
+      "created_at": "2024-01-01T00:00:00+00:00",
+      "updated_at": "2024-05-18T10:00:00+00:00"
+    }
+  ],
+  "transactions": [
+    {
+      "id": "txn_001",
+      "account_id": "acc_001",
+      "household_id": "hh_demo",
+      "date": "2024-05-15",
+      "amount": 15.99,
+      "type": "expense",
+      "title": "Netflix",
+      "merchant_name": "Netflix",
+      "pending": false,
+      "subscription_id": "sub_001",
+      "created_at": "2024-05-15T12:00:00+00:00",
+      "updated_at": "2024-05-15T12:00:00+00:00"
+    },
+    {
+      "id": "txn_002",
+      "account_id": "acc_001",
+      "household_id": "hh_demo",
+      "date": "2024-05-14",
+      "amount": 45.00,
+      "type": "expense",
+      "title": "Grocery Store",
+      "merchant_name": "Trader Joe's",
+      "pending": false,
+      "created_at": "2024-05-14T12:00:00+00:00",
+      "updated_at": "2024-05-14T12:00:00+00:00"
+    },
+    {
+      "id": "txn_003",
+      "account_id": "acc_001",
+      "household_id": "hh_demo",
+      "date": "2024-05-01",
+      "amount": -3000.00,
+      "type": "income",
+      "title": "Payroll",
+      "merchant_name": "Demo Corp",
+      "pending": false,
+      "created_at": "2024-05-01T12:00:00+00:00",
+      "updated_at": "2024-05-01T12:00:00+00:00"
+    }
+  ],
+  "budgets": [
+    {
+      "id": "bdg_001",
+      "household_id": "hh_demo",
+      "name": "Groceries",
+      "category": "Food & Dining",
+      "amount": 500.00,
+      "currency": "USD",
+      "period": "monthly",
+      "is_active": true,
+      "created_at": "2024-01-01T00:00:00+00:00",
+      "updated_at": "2024-05-18T10:00:00+00:00"
+    }
+  ],
+  "account_snapshots": [
+    {
+      "id": "snap_001",
+      "household_id": "hh_demo",
+      "snapshot_date": "2024-04-30",
+      "total_assets": 17500.00,
+      "total_liabilities": 500.00,
+      "net_worth": 17000.00,
+      "created_at": "2024-04-30T23:59:59+00:00"
+    }
+  ]
+}

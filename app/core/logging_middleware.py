@@ -15,12 +15,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         user_id = getattr(request.state, "user_id", None) or request.headers.get("X-User-ID")
         household_id = getattr(request.state, "household_id", None) or request.headers.get("X-Household-ID")
 
+        is_demo_mode = request.headers.get("X-Demo-Mode", "").lower() == "true"
         structlog.contextvars.bind_contextvars(
             request_id=request.headers.get("X-Request-ID", "unknown"),
             user_id=user_id,
             household_id=household_id,
             path=str(request.url.path),
             method=request.method,
+            demo_mode=is_demo_mode,
         )
 
         try:
