@@ -2,6 +2,7 @@
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import text
 import os
 import sys
 
@@ -56,13 +57,46 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
+    # Check for target schema in -x args (passed by apply_migrations.py)
+    x_args = context.get_x_argument(as_dictionary=True)
+    tenant_schema = x_args.get("tenant_schema")
+
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        # If tenant_schema is provided, use schema_translate_map
+        # to reroute public table definitions to the new schema
+        configure_kwargs = {
+            "connection": connection,
+            "target_metadata": target_metadata,
+        }
+
+        if tenant_schema:
+            # We must also ensure the alembic_version table is created in the correct schema
+            configure_kwargs["version_table_schema"] = tenant_schema
+            configure_kwargs["include_schemas"] = True
+
+            # Translate metadata schema None (default) to tenant_schema
+            connection = connection.execution_options(
+                schema_translate_map={None: tenant_schema}
+            )
+
+            # Since execution_options returns a cloned connection, update our dict
+            configure_kwargs["connection"] = connection
+
+            # Ensure the schema actually exists before we try to migrate it
+            connection.execute(text(f"CREATE SCHEMA IF NOT EXISTS {tenant_schema}"))
+            connection.commit()
+
+        context.configure(**configure_kwargs)
 
         with context.begin_transaction():
+            if tenant_schema:
+                # Explicitly set search path for safety
+                context.execute(f"SET search_path TO {tenant_schema}")
+
             context.run_migrations()
+
+            if tenant_schema:
+                context.execute("SET search_path TO public")
 
 
 if context.is_offline_mode():

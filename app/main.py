@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.core.database import Base, engine, AsyncSessionLocal
 from app.core.logging import get_logger, setup_logging
 from app.core.logging_middleware import LoggingMiddleware
-from app.api.v1.routers import health, accounts, transactions, budgets, simplefin, categories, admin, subscriptions, auth, users
+from app.api.v1.routers import health, accounts, transactions, budgets, simplefin, categories, admin, subscriptions, auth, users, demo
 import app.infrastructure.models  # noqa: F401 — registers all models with Base.metadata
 
 setup_logging()
@@ -116,6 +116,7 @@ app.include_router(categories.router, prefix="/api", tags=["Categories"])
 app.include_router(subscriptions.router, prefix="/api", tags=["Subscriptions"])
 app.include_router(admin.router, prefix="/api", tags=["Admin"])
 app.include_router(simplefin.router, prefix="/api/simplefin", tags=["SimpleFIN"])
+app.include_router(demo.router)
 
 
 @app.get("/")
